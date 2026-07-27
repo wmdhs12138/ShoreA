@@ -10,6 +10,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -75,6 +77,7 @@ class MainActivity : ComponentActivity() {
 private data class ShoreList(
     val id: Long,
     val name: String,
+    val tags: List<String> = emptyList(),
 )
 
 @Composable
@@ -94,6 +97,7 @@ private fun ListHome() {
     val lists = remember { mutableStateListOf<ShoreList>() }
     var nextId by remember { mutableLongStateOf(1L) }
     var showAddDialog by remember { mutableStateOf(false) }
+    var showAddTagDialog by remember { mutableStateOf(false) }
     var selectedList by remember { mutableStateOf<ShoreList?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -189,10 +193,30 @@ private fun ListHome() {
     }
 
     selectedList?.let { item ->
-        ListContentSheet(
-            item = item,
-            onDismiss = { selectedList = null },
-        )
+        if (!showAddTagDialog) {
+            ListContentSheet(
+                item = item,
+                onAddTagRequest = { showAddTagDialog = true },
+                onDismiss = { selectedList = null },
+            )
+        } else {
+            AddTagDialog(
+                item = item,
+                onDismiss = { showAddTagDialog = false },
+                onConfirm = { tag ->
+                    val itemIndex = lists.indexOfFirst { it.id == item.id }
+                    if (itemIndex >= 0) {
+                        val currentItem = lists[itemIndex]
+                        val updatedItem = currentItem.copy(
+                            tags = currentItem.tags + tag,
+                        )
+                        lists[itemIndex] = updatedItem
+                        selectedList = updatedItem
+                    }
+                    showAddTagDialog = false
+                },
+            )
+        }
     }
 }
 
@@ -223,6 +247,7 @@ private fun EmptyListState(innerPadding: PaddingValues) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SwipeListItem(
     item: ShoreList,
@@ -267,50 +292,67 @@ private fun SwipeListItem(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             ),
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 18.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ListGlyph(
-                        modifier = Modifier.size(26.dp),
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ListGlyph(
+                            modifier = Modifier.size(26.dp),
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = item.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = "向左滑动删除",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.width(16.dp))
-
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text(
-                        text = item.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = "向左滑动删除",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                if (item.tags.isNotEmpty()) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        item.tags.forEach { tag ->
+                            TagChip(tag = tag)
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ListContentSheet(
     item: ShoreList,
+    onAddTagRequest: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
@@ -387,6 +429,44 @@ private fun ListContentSheet(
                 }
             }
 
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "标签",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+
+                    TextButton(onClick = onAddTagRequest) {
+                        Text("＋ 添加标签")
+                    }
+                }
+
+                if (item.tags.isEmpty()) {
+                    Text(
+                        text = "还没有标签",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        item.tags.forEach { tag ->
+                            TagChip(tag = tag)
+                        }
+                    }
+                }
+            }
+
             TextButton(
                 onClick = onDismiss,
                 modifier = Modifier.align(Alignment.End),
@@ -394,6 +474,70 @@ private fun ListContentSheet(
                 Text("关闭")
             }
         }
+    }
+}
+
+@Composable
+private fun AddTagDialog(
+    item: ShoreList,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var tagName by remember(item.id) { mutableStateOf("") }
+    val trimmedTag = tagName.trim()
+    val tagAlreadyExists = item.tags.any {
+        it.equals(trimmedTag, ignoreCase = true)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("添加标签") },
+        text = {
+            OutlinedTextField(
+                value = tagName,
+                onValueChange = { tagName = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("标签名称") },
+                placeholder = { Text("例如：重要") },
+                supportingText = {
+                    if (tagAlreadyExists && trimmedTag.isNotEmpty()) {
+                        Text("该标签已存在")
+                    }
+                },
+                isError = tagAlreadyExists && trimmedTag.isNotEmpty(),
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(trimmedTag) },
+                enabled = trimmedTag.isNotEmpty() && !tagAlreadyExists,
+            ) {
+                Text("添加")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        },
+    )
+}
+
+@Composable
+private fun TagChip(
+    tag: String,
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    ) {
+        Text(
+            text = tag,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelLarge,
+        )
     }
 }
 
