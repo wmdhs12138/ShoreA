@@ -28,6 +28,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.MaterialTheme
@@ -47,9 +48,8 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -59,8 +59,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -73,12 +75,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
-private data class ShoreList(
-    val id: Long,
-    val name: String,
-    val tags: List<String> = emptyList(),
-)
 
 @Composable
 private fun ShoreA() {
@@ -94,13 +90,32 @@ private fun ShoreA() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ListHome() {
-    val lists = remember { mutableStateListOf<ShoreList>() }
-    var nextId by remember { mutableLongStateOf(1L) }
+    val appContext = LocalContext.current.applicationContext
+    val listStore = remember(appContext) { ShoreListStore(appContext) }
+    var lists by remember { mutableStateOf<List<ShoreList>>(emptyList()) }
+    var hasLoadedLists by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var showAddTagDialog by remember { mutableStateOf(false) }
     var selectedList by remember { mutableStateOf<ShoreList?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+
+    fun replaceLists(updatedLists: List<ShoreList>) {
+        lists = updatedLists
+        coroutineScope.launch {
+            listStore.saveLists(updatedLists)
+        }
+    }
+
+    LaunchedEffect(listStore) {
+        listStore.lists.collectLatest { storedLists ->
+            lists = storedLists
+            selectedList = selectedList?.let { selected ->
+                storedLists.firstOrNull { it.id == selected.id }
+            }
+            hasLoadedLists = true
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -117,17 +132,19 @@ private fun ListHome() {
             SnackbarHost(hostState = snackbarHostState)
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showAddDialog = true },
-            ) {
-                Text("＋ 添加列表")
+            if (hasLoadedLists) {
+                ExtendedFloatingActionButton(
+                    onClick = { showAddDialog = true },
+                ) {
+                    Text("＋ 添加列表")
+                }
             }
         },
     ) { innerPadding ->
-        if (lists.isEmpty()) {
-            EmptyListState(innerPadding)
-        } else {
-            LazyColumn(
+        when {
+            !hasLoadedLists -> LoadingListState(innerPadding)
+            lists.isEmpty() -> EmptyListState(innerPadding)
+            else -> LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
@@ -147,27 +164,39 @@ private fun ListHome() {
                         item = item,
                         onOpen = { selectedList = item },
                         onDelete = {
-                            val deletedIndex = lists.indexOf(item)
+                            val deletedIndex = lists.indexOfFirst { it.id == item.id }
                             if (deletedIndex >= 0) {
-                                lists.removeAt(deletedIndex)
+                                val deletedItem = lists[deletedIndex]
+                                val updatedLists = lists.toMutableList().apply {
+                                    removeAt(deletedIndex)
+                                }
+                                replaceLists(updatedLists)
+
+                                if (selectedList?.id == deletedItem.id) {
+                                    selectedList = null
+                                    showAddTagDialog = false
+                                }
 
                                 coroutineScope.launch {
                                     snackbarHostState.currentSnackbarData?.dismiss()
 
                                     val result = snackbarHostState.showSnackbar(
-                                        message = "已删除“${item.name}”",
+                                        message = "已删除“${deletedItem.name}”",
                                         actionLabel = "撤回",
                                         duration = SnackbarDuration.Long,
                                     )
 
                                     if (
                                         result == SnackbarResult.ActionPerformed &&
-                                        lists.none { it.id == item.id }
+                                        lists.none { it.id == deletedItem.id }
                                     ) {
-                                        lists.add(
-                                            index = deletedIndex.coerceIn(0, lists.size),
-                                            element = item,
-                                        )
+                                        val restoredLists = lists.toMutableList().apply {
+                                            add(
+                                                index = deletedIndex.coerceIn(0, size),
+                                                element = deletedItem,
+                                            )
+                                        }
+                                        replaceLists(restoredLists)
                                     }
                                 }
                             }
@@ -182,11 +211,13 @@ private fun ListHome() {
         AddListDialog(
             onDismiss = { showAddDialog = false },
             onConfirm = { name ->
-                lists += ShoreList(
-                    id = nextId,
-                    name = name,
+                val nextId = (lists.maxOfOrNull { it.id } ?: 0L) + 1L
+                replaceLists(
+                    lists + ShoreList(
+                        id = nextId,
+                        name = name,
+                    ),
                 )
-                nextId += 1
                 showAddDialog = false
             },
         )
@@ -210,13 +241,28 @@ private fun ListHome() {
                         val updatedItem = currentItem.copy(
                             tags = currentItem.tags + tag,
                         )
-                        lists[itemIndex] = updatedItem
+                        val updatedLists = lists.toMutableList().apply {
+                            this[itemIndex] = updatedItem
+                        }
+                        replaceLists(updatedLists)
                         selectedList = updatedItem
                     }
                     showAddTagDialog = false
                 },
             )
         }
+    }
+}
+
+@Composable
+private fun LoadingListState(innerPadding: PaddingValues) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(innerPadding),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProgressIndicator()
     }
 }
 
