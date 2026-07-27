@@ -29,6 +29,7 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -93,6 +94,7 @@ private fun ListHome() {
     val lists = remember { mutableStateListOf<ShoreList>() }
     var nextId by remember { mutableLongStateOf(1L) }
     var showAddDialog by remember { mutableStateOf(false) }
+    var selectedList by remember { mutableStateOf<ShoreList?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
@@ -139,6 +141,7 @@ private fun ListHome() {
                 ) { item ->
                     SwipeListItem(
                         item = item,
+                        onOpen = { selectedList = item },
                         onDelete = {
                             val deletedIndex = lists.indexOf(item)
                             if (deletedIndex >= 0) {
@@ -184,6 +187,13 @@ private fun ListHome() {
             },
         )
     }
+
+    selectedList?.let { item ->
+        ListContentSheet(
+            item = item,
+            onDismiss = { selectedList = null },
+        )
+    }
 }
 
 @Composable
@@ -216,6 +226,7 @@ private fun EmptyListState(innerPadding: PaddingValues) {
 @Composable
 private fun SwipeListItem(
     item: ShoreList,
+    onOpen: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val dismissState = rememberSwipeToDismissBoxState()
@@ -249,6 +260,7 @@ private fun SwipeListItem(
         },
     ) {
         Card(
+            onClick = onOpen,
             modifier = Modifier.fillMaxWidth(),
             shape = itemShape,
             colors = CardDefaults.cardColors(
@@ -290,6 +302,96 @@ private fun SwipeListItem(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ListContentSheet(
+    item: ShoreList,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = 24.dp,
+                    end = 24.dp,
+                    bottom = 32.dp,
+                ),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ListGlyph(
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = item.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "列表内容",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+            ) {
+                Column(
+                    modifier = Modifier.padding(
+                        horizontal = 24.dp,
+                        vertical = 40.dp,
+                    ),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = "这个列表还没有内容",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "下一步可以在这里添加列表项",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Text("关闭")
             }
         }
     }
