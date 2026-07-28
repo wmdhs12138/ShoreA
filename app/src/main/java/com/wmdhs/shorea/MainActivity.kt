@@ -4,7 +4,15 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -94,6 +102,7 @@ private fun ListHome() {
     val listStore = remember(appContext) { ShoreListStore(appContext) }
     var lists by remember { mutableStateOf<List<ShoreList>>(emptyList()) }
     var hasLoadedLists by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
     var showAddDialog by remember { mutableStateOf(false) }
     var showAddTagDialog by remember { mutableStateOf(false) }
     var selectedList by remember { mutableStateOf<ShoreList?>(null) }
@@ -117,16 +126,43 @@ private fun ListHome() {
         }
     }
 
+    val normalizedSearchQuery = searchQuery.trim()
+    val visibleLists = if (normalizedSearchQuery.isEmpty()) {
+        lists
+    } else {
+        lists.filter { item ->
+            item.name.contains(
+                other = normalizedSearchQuery,
+                ignoreCase = true,
+            ) || item.tags.any { tag ->
+                tag.contains(
+                    other = normalizedSearchQuery,
+                    ignoreCase = true,
+                )
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = "列表",
-                        fontWeight = FontWeight.SemiBold,
+            Column {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Text(
+                            text = "列表",
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    },
+                )
+
+                if (hasLoadedLists) {
+                    ListSearchField(
+                        query = searchQuery,
+                        onQueryChange = { searchQuery = it },
+                        onClear = { searchQuery = "" },
                     )
-                },
-            )
+                }
+            }
         },
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState)
@@ -144,6 +180,10 @@ private fun ListHome() {
         when {
             !hasLoadedLists -> LoadingListState(innerPadding)
             lists.isEmpty() -> EmptyListState(innerPadding)
+            visibleLists.isEmpty() -> EmptySearchState(
+                innerPadding = innerPadding,
+                query = normalizedSearchQuery,
+            )
             else -> LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -157,7 +197,7 @@ private fun ListHome() {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(
-                    items = lists,
+                    items = visibleLists,
                     key = { it.id },
                 ) { item ->
                     SwipeListItem(
@@ -228,6 +268,20 @@ private fun ListHome() {
             ListContentSheet(
                 item = item,
                 onAddTagRequest = { showAddTagDialog = true },
+                onDeleteTag = { tag ->
+                    val itemIndex = lists.indexOfFirst { it.id == item.id }
+                    if (itemIndex >= 0) {
+                        val currentItem = lists[itemIndex]
+                        val updatedItem = currentItem.copy(
+                            tags = currentItem.tags.filterNot { it == tag },
+                        )
+                        val updatedLists = lists.toMutableList().apply {
+                            this[itemIndex] = updatedItem
+                        }
+                        replaceLists(updatedLists)
+                        selectedList = updatedItem
+                    }
+                },
                 onDismiss = { selectedList = null },
             )
         } else {
@@ -249,6 +303,65 @@ private fun ListHome() {
                     }
                     showAddTagDialog = false
                 },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ListSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onClear: () -> Unit,
+) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                start = 16.dp,
+                end = 16.dp,
+                bottom = 12.dp,
+            ),
+        label = { Text("搜索") },
+        placeholder = { Text("搜索列表名称或标签") },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                TextButton(onClick = onClear) {
+                    Text("清除")
+                }
+            }
+        },
+        singleLine = true,
+    )
+}
+
+@Composable
+private fun EmptySearchState(
+    innerPadding: PaddingValues,
+    query: String,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(innerPadding)
+            .padding(horizontal = 32.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "没有匹配的列表",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = "未找到与“$query”相关的列表名称或标签",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -399,8 +512,11 @@ private fun SwipeListItem(
 private fun ListContentSheet(
     item: ShoreList,
     onAddTagRequest: () -> Unit,
+    onDeleteTag: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var pendingDeleteTag by remember(item.id) { mutableStateOf<String?>(null) }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
     ) {
@@ -507,9 +623,25 @@ private fun ListContentSheet(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         item.tags.forEach { tag ->
-                            TagChip(tag = tag)
+                            EditableTagChip(
+                                tag = tag,
+                                isDeleteMode = pendingDeleteTag == tag,
+                                onLongPress = {
+                                    pendingDeleteTag = tag
+                                },
+                                onDelete = {
+                                    pendingDeleteTag = null
+                                    onDeleteTag(tag)
+                                },
+                            )
                         }
                     }
+
+                    Text(
+                        text = "长按标签可切换为删除按钮",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
 
@@ -568,6 +700,83 @@ private fun AddTagDialog(
             }
         },
     )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun EditableTagChip(
+    tag: String,
+    isDeleteMode: Boolean,
+    onLongPress: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val containerColor by animateColorAsState(
+        targetValue = if (isDeleteMode) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer
+        },
+        animationSpec = tween(durationMillis = 220),
+        label = "tagDeleteContainerColor",
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (isDeleteMode) {
+            MaterialTheme.colorScheme.onError
+        } else {
+            MaterialTheme.colorScheme.onSecondaryContainer
+        },
+        animationSpec = tween(durationMillis = 220),
+        label = "tagDeleteContentColor",
+    )
+
+    Surface(
+        modifier = Modifier.combinedClickable(
+            onClick = {
+                if (isDeleteMode) {
+                    onDelete()
+                }
+            },
+            onLongClick = onLongPress,
+        ),
+        shape = CircleShape,
+        color = containerColor,
+        contentColor = contentColor,
+    ) {
+        Box(
+            modifier = Modifier
+                .animateContentSize(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow,
+                    ),
+                )
+                .padding(
+                    horizontal = 12.dp,
+                    vertical = 6.dp,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Crossfade(
+                targetState = isDeleteMode,
+                animationSpec = tween(durationMillis = 160),
+                label = "tagDeleteText",
+            ) { deleteMode ->
+                Text(
+                    text = if (deleteMode) {
+                        "删除：$tag"
+                    } else {
+                        tag
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (deleteMode) {
+                        FontWeight.SemiBold
+                    } else {
+                        FontWeight.Normal
+                    },
+                )
+            }
+        }
+    }
 }
 
 @Composable
