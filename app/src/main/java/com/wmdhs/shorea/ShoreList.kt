@@ -45,6 +45,7 @@ internal data class RubberCompound(
 
 internal data class PartSpecificationGroup(
     val id: Long,
+    val standardNumber: String = "",
     val partNumbers: List<String>,
     val hardness: HardnessSet = HardnessSet(),
     val productCategory: String = "",
@@ -73,7 +74,8 @@ internal data class PartSpecificationGroup(
             return true
         }
 
-        return partNumbers.any { it.contains(query, ignoreCase = true) } ||
+        return standardNumber.contains(query, ignoreCase = true) ||
+            partNumbers.any { it.contains(query, ignoreCase = true) } ||
             hardness.testPieceHardness.contains(query, ignoreCase = true) ||
             hardness.blockHardness.contains(query, ignoreCase = true) ||
             hardness.productHardness.contains(query, ignoreCase = true) ||

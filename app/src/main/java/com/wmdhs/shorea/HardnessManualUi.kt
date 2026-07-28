@@ -65,6 +65,7 @@ internal data class CompoundFormData(
 )
 
 internal data class GroupFormData(
+    val standardNumber: String,
     val partNumbers: List<String>,
     val hardness: HardnessSet,
     val productCategory: String,
@@ -92,7 +93,7 @@ internal fun ManualSearchField(
             ),
         label = { Text("搜索") },
         placeholder = {
-            Text("搜索胶料号、部品号或硬度")
+            Text("搜索胶料号、标准号、部品号或硬度")
         },
         trailingIcon = {
             if (query.isNotEmpty()) {
@@ -170,7 +171,7 @@ internal fun EmptyManualSearchState(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "未找到与“$query”相关的胶料号、部品号或硬度",
+                text = "未找到与“$query”相关的胶料号、标准号、部品号或硬度",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -298,7 +299,7 @@ private fun CompoundCard(
                     Text(
                         text = buildString {
                             append(compound.groups.size)
-                            append(" 个检测标准组 · ")
+                            append(" 个检测标准 · ")
                             append(compound.totalPartCount)
                             append(" 个部品")
                         },
@@ -370,12 +371,28 @@ private fun SearchMatchPreview(
             Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = group.partNumbers.joinToString(" · "),
+        Column(
             modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-        )
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = group.standardNumber.ifBlank {
+                    "未填写标准号"
+                },
+                style = MaterialTheme.typography.labelLarge,
+                color = if (group.standardNumber.isBlank()) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = group.partNumbers.joinToString(" · "),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+            )
+        }
 
         Text(
             text = group.recommendation?.value
@@ -481,7 +498,7 @@ internal fun CompoundDetailSheet(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "检测标准组",
+                        text = "检测标准",
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme
                             .typography
@@ -490,7 +507,7 @@ internal fun CompoundDetailSheet(
                     )
 
                     TextButton(onClick = onAddGroup) {
-                        Text("＋ 添加标准组")
+                        Text("＋ 添加标准")
                     }
                 }
             }
@@ -515,14 +532,14 @@ internal fun CompoundDetailSheet(
                                 Arrangement.spacedBy(6.dp),
                         ) {
                             Text(
-                                text = "还没有部品检测标准",
+                                text = "还没有检测标准",
                                 style = MaterialTheme
                                     .typography
                                     .titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Text(
-                                text = "添加部品号与三类硬度资料",
+                                text = "添加标准号、部品号与三类硬度资料",
                                 style = MaterialTheme
                                     .typography
                                     .bodyMedium,
@@ -716,11 +733,55 @@ private fun SpecificationGroupCard(
             modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = group.partNumbers.joinToString(" · "),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme
+                    .colorScheme
+                    .secondaryContainer,
+                contentColor = MaterialTheme
+                    .colorScheme
+                    .onSecondaryContainer,
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement =
+                        Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = "检测标准号",
+                        style = MaterialTheme
+                            .typography
+                            .labelMedium,
+                    )
+                    Text(
+                        text = group.standardNumber.ifBlank {
+                            "未填写标准号"
+                        },
+                        style = MaterialTheme
+                            .typography
+                            .titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text(
+                    text = "适用部品",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme
+                        .colorScheme
+                        .onSurfaceVariant,
+                )
+                Text(
+                    text = group.partNumbers.joinToString(" · "),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
 
             RecommendedHardnessBlock(group = group)
 
@@ -1205,6 +1266,9 @@ internal fun GroupEditorDialog(
     onDismiss: () -> Unit,
     onSave: (GroupFormData) -> Unit,
 ) {
+    var standardNumber by remember(initial?.id) {
+        mutableStateOf(initial?.standardNumber.orEmpty())
+    }
     var partNumbersText by remember(initial?.id) {
         mutableStateOf(
             initial?.partNumbers?.joinToString("\n").orEmpty(),
@@ -1241,8 +1305,12 @@ internal fun GroupEditorDialog(
         mutableStateOf(initial?.notes.orEmpty())
     }
 
+    val normalizedStandardNumber = standardNumber
+        .trim()
+        .uppercase(Locale.ROOT)
     val parsedPartNumbers = parsePartNumbers(partNumbersText)
-    val canSave = parsedPartNumbers.isNotEmpty()
+    val canSave = normalizedStandardNumber.isNotEmpty() &&
+        parsedPartNumbers.isNotEmpty()
 
     FullScreenEditorDialog(
         title = if (initial == null) {
@@ -1256,6 +1324,7 @@ internal fun GroupEditorDialog(
         onSave = {
             onSave(
                 GroupFormData(
+                    standardNumber = normalizedStandardNumber,
                     partNumbers = parsedPartNumbers,
                     hardness = HardnessSet(
                         testPieceHardness =
@@ -1290,9 +1359,35 @@ internal fun GroupEditorDialog(
         ) {
             item {
                 EditorSectionTitle(
-                    title = "部品号",
+                    title = "检测标准",
                     description =
-                        "相同检测标准的多个部品号可放在同一组",
+                        "标准号是本组检测要求的唯一识别信息",
+                )
+            }
+
+            item {
+                OutlinedTextField(
+                    value = standardNumber,
+                    onValueChange = {
+                        standardNumber = it
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("检测标准号 *") },
+                    placeholder = {
+                        Text("例如：B2-12-1078/A")
+                    },
+                    supportingText = {
+                        Text("标准号会显示在标准卡片最上方")
+                    },
+                    singleLine = true,
+                )
+            }
+
+            item {
+                EditorSectionTitle(
+                    title = "适用部品",
+                    description =
+                        "执行同一检测标准的多个部品号可放在同一组",
                 )
             }
 
@@ -1567,7 +1662,7 @@ internal fun DeleteStandardGroupDialog(
         title = { Text("删除检测标准组？") },
         text = {
             Text(
-                "将删除部品号：${group.partNumbers.joinToString("、")}。此操作会立即保存。",
+                "将删除标准 ${group.standardNumber.ifBlank { "（未填写标准号）" }}，适用部品：${group.partNumbers.joinToString("、")}。此操作会立即保存。",
             )
         },
         confirmButton = {

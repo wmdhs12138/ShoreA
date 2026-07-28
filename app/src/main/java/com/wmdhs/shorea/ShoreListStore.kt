@@ -65,6 +65,7 @@ private fun encodeCompounds(compounds: List<RubberCompound>): String {
             groupsArray.put(
                 JSONObject()
                     .put("id", group.id)
+                    .put("standardNumber", group.standardNumber)
                     .put("partNumbers", partNumbersArray)
                     .put(
                         "hardness",
@@ -156,6 +157,9 @@ private fun decodeCompounds(rawValue: String): List<RubberCompound> =
                             add(
                                 PartSpecificationGroup(
                                     id = groupId,
+                                    standardNumber = jsonGroup
+                                        .optString("standardNumber", "")
+                                        .trim(),
                                     partNumbers = partNumbers,
                                     hardness = HardnessSet(
                                         testPieceHardness = hardnessJson

@@ -401,6 +401,7 @@ private fun HardnessManualHome() {
                                     it.id
                                 } ?: 0L
                             ) + 1L,
+                            standardNumber = form.standardNumber,
                             partNumbers = form.partNumbers,
                             hardness = form.hardness,
                             productCategory = form.productCategory,
@@ -411,6 +412,7 @@ private fun HardnessManualHome() {
                         )
                     } else {
                         existing.copy(
+                            standardNumber = form.standardNumber,
                             partNumbers = form.partNumbers,
                             hardness = form.hardness,
                             productCategory = form.productCategory,
