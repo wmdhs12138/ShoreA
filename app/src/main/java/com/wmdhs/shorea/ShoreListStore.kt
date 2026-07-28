@@ -12,14 +12,14 @@ import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
 
-private val Context.shoreListDataStore by preferencesDataStore(
+private val Context.shoreManualDataStore by preferencesDataStore(
     name = "shore_lists",
 )
 
-internal class ShoreListStore(
+internal class HardnessManualStore(
     private val context: Context,
 ) {
-    val lists: Flow<List<ShoreList>> = context.shoreListDataStore.data
+    val compounds: Flow<List<RubberCompound>> = context.shoreManualDataStore.data
         .catch { exception ->
             if (exception is IOException) {
                 emit(emptyPreferences())
@@ -28,53 +28,214 @@ internal class ShoreListStore(
             }
         }
         .map { preferences ->
-            decodeLists(preferences[LISTS_JSON_KEY])
+            val manualJson = preferences[MANUAL_JSON_KEY]
+
+            if (manualJson.isNullOrBlank()) {
+                decodeLegacyLists(preferences[LEGACY_LISTS_JSON_KEY])
+            } else {
+                decodeCompounds(manualJson)
+            }
         }
 
-    suspend fun saveLists(lists: List<ShoreList>) {
-        context.shoreListDataStore.edit { preferences ->
-            preferences[LISTS_JSON_KEY] = encodeLists(lists)
+    suspend fun saveCompounds(compounds: List<RubberCompound>) {
+        context.shoreManualDataStore.edit { preferences ->
+            preferences[MANUAL_JSON_KEY] = encodeCompounds(compounds)
         }
     }
 
     private companion object {
-        val LISTS_JSON_KEY = stringPreferencesKey("lists_json")
-
-        const val JSON_ID = "id"
-        const val JSON_NAME = "name"
-        const val JSON_TAGS = "tags"
+        val MANUAL_JSON_KEY = stringPreferencesKey("hardness_manual_json_v1")
+        val LEGACY_LISTS_JSON_KEY = stringPreferencesKey("lists_json")
     }
 }
 
-private fun encodeLists(lists: List<ShoreList>): String {
-    val array = JSONArray()
+private fun encodeCompounds(compounds: List<RubberCompound>): String {
+    val root = JSONObject()
+        .put("schemaVersion", 1)
 
-    lists.forEach { list ->
-        val tags = JSONArray()
-        list.tags.forEach(tags::put)
+    val compoundsArray = JSONArray()
 
-        array.put(
+    compounds.forEach { compound ->
+        val groupsArray = JSONArray()
+
+        compound.groups.forEach { group ->
+            val partNumbersArray = JSONArray()
+            group.partNumbers.forEach(partNumbersArray::put)
+
+            groupsArray.put(
+                JSONObject()
+                    .put("id", group.id)
+                    .put("partNumbers", partNumbersArray)
+                    .put(
+                        "hardness",
+                        JSONObject()
+                            .put(
+                                "testPiece",
+                                group.hardness.testPieceHardness,
+                            )
+                            .put(
+                                "block",
+                                group.hardness.blockHardness,
+                            )
+                            .put(
+                                "product",
+                                group.hardness.productHardness,
+                            ),
+                    )
+                    .put("productCategory", group.productCategory)
+                    .put("color", group.color)
+                    .put("tensileStrength", group.tensileStrength)
+                    .put("elongation", group.elongation)
+                    .put("notes", group.notes),
+            )
+        }
+
+        compoundsArray.put(
             JSONObject()
-                .put("id", list.id)
-                .put("name", list.name)
-                .put("tags", tags),
+                .put("id", compound.id)
+                .put("compoundCode", compound.compoundCode)
+                .put(
+                    "testPieceCureTemperatureC",
+                    compound.testPieceCureTemperatureC,
+                )
+                .put(
+                    "testPieceCureTimeMinutes",
+                    compound.testPieceCureTimeMinutes,
+                )
+                .put(
+                    "customBlockCureTimeMinutes",
+                    compound.customBlockCureTimeMinutes,
+                )
+                .put("groups", groupsArray)
+                .put("notes", compound.notes),
         )
     }
 
-    return array.toString()
+    root.put("compounds", compoundsArray)
+    return root.toString()
 }
 
-private fun decodeLists(rawValue: String?): List<ShoreList> {
+private fun decodeCompounds(rawValue: String): List<RubberCompound> =
+    runCatching {
+        val root = JSONObject(rawValue)
+        val compoundsArray = root.optJSONArray("compounds")
+            ?: return@runCatching emptyList()
+
+        buildList {
+            for (index in 0 until compoundsArray.length()) {
+                val jsonCompound = compoundsArray.optJSONObject(index)
+                    ?: continue
+                val id = jsonCompound.optLong("id", -1L)
+                val compoundCode = jsonCompound
+                    .optString("compoundCode", "")
+                    .trim()
+
+                if (id < 0L || compoundCode.isEmpty()) {
+                    continue
+                }
+
+                val groupsArray = jsonCompound.optJSONArray("groups")
+                val groups = buildList {
+                    if (groupsArray != null) {
+                        for (groupIndex in 0 until groupsArray.length()) {
+                            val jsonGroup = groupsArray
+                                .optJSONObject(groupIndex)
+                                ?: continue
+                            val groupId = jsonGroup.optLong("id", -1L)
+                            val partNumbers = jsonGroup
+                                .optJSONArray("partNumbers")
+                                .toStringList()
+
+                            if (groupId < 0L || partNumbers.isEmpty()) {
+                                continue
+                            }
+
+                            val hardnessJson = jsonGroup
+                                .optJSONObject("hardness")
+
+                            add(
+                                PartSpecificationGroup(
+                                    id = groupId,
+                                    partNumbers = partNumbers,
+                                    hardness = HardnessSet(
+                                        testPieceHardness = hardnessJson
+                                            ?.optString("testPiece", "")
+                                            .orEmpty()
+                                            .trim(),
+                                        blockHardness = hardnessJson
+                                            ?.optString("block", "")
+                                            .orEmpty()
+                                            .trim(),
+                                        productHardness = hardnessJson
+                                            ?.optString("product", "")
+                                            .orEmpty()
+                                            .trim(),
+                                    ),
+                                    productCategory = jsonGroup
+                                        .optString("productCategory", "")
+                                        .trim(),
+                                    color = jsonGroup
+                                        .optString("color", "")
+                                        .trim(),
+                                    tensileStrength = jsonGroup
+                                        .optString("tensileStrength", "")
+                                        .trim(),
+                                    elongation = jsonGroup
+                                        .optString("elongation", "")
+                                        .trim(),
+                                    notes = jsonGroup
+                                        .optString("notes", "")
+                                        .trim(),
+                                ),
+                            )
+                        }
+                    }
+                }.distinctBy(PartSpecificationGroup::id)
+
+                add(
+                    RubberCompound(
+                        id = id,
+                        compoundCode = compoundCode,
+                        testPieceCureTemperatureC = jsonCompound
+                            .optString(
+                                "testPieceCureTemperatureC",
+                                "",
+                            )
+                            .trim(),
+                        testPieceCureTimeMinutes = jsonCompound
+                            .optString(
+                                "testPieceCureTimeMinutes",
+                                "",
+                            )
+                            .trim(),
+                        customBlockCureTimeMinutes = jsonCompound
+                            .optString(
+                                "customBlockCureTimeMinutes",
+                                "",
+                            )
+                            .trim(),
+                        groups = groups,
+                        notes = jsonCompound
+                            .optString("notes", "")
+                            .trim(),
+                    ),
+                )
+            }
+        }.distinctBy(RubberCompound::id)
+    }.getOrDefault(emptyList())
+
+private fun decodeLegacyLists(rawValue: String?): List<RubberCompound> {
     if (rawValue.isNullOrBlank()) {
         return emptyList()
     }
 
     return runCatching {
-        val array = JSONArray(rawValue)
+        val legacyArray = JSONArray(rawValue)
 
         buildList {
-            for (index in 0 until array.length()) {
-                val jsonList = array.optJSONObject(index) ?: continue
+            for (index in 0 until legacyArray.length()) {
+                val jsonList = legacyArray.optJSONObject(index)
+                    ?: continue
                 val id = jsonList.optLong("id", -1L)
                 val name = jsonList.optString("name", "").trim()
 
@@ -82,26 +243,37 @@ private fun decodeLists(rawValue: String?): List<ShoreList> {
                     continue
                 }
 
-                val jsonTags = jsonList.optJSONArray("tags")
-                val tags = buildList {
-                    if (jsonTags != null) {
-                        for (tagIndex in 0 until jsonTags.length()) {
-                            val tag = jsonTags.optString(tagIndex, "").trim()
-                            if (tag.isNotEmpty()) {
-                                add(tag)
-                            }
-                        }
-                    }
-                }.distinct()
+                val tags = jsonList.optJSONArray("tags").toStringList()
+                val migrationNote = if (tags.isEmpty()) {
+                    "由旧版列表自动迁移，请补充胶料资料。"
+                } else {
+                    "由旧版列表自动迁移。原标签：${tags.joinToString("、")}"
+                }
 
                 add(
-                    ShoreList(
+                    RubberCompound(
                         id = id,
-                        name = name,
-                        tags = tags,
+                        compoundCode = name,
+                        notes = migrationNote,
                     ),
                 )
             }
-        }.distinctBy(ShoreList::id)
+        }.distinctBy(RubberCompound::id)
     }.getOrDefault(emptyList())
+}
+
+private fun JSONArray?.toStringList(): List<String> {
+    if (this == null) {
+        return emptyList()
+    }
+
+    return buildList {
+        for (index in 0 until length()) {
+            val value = optString(index, "").trim()
+
+            if (value.isNotEmpty()) {
+                add(value)
+            }
+        }
+    }.distinct()
 }

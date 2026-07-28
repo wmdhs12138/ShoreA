@@ -4,57 +4,27 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,11 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -87,60 +53,100 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun ShoreA() {
     MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
+        colorScheme = if (isSystemInDarkTheme()) {
+            darkColorScheme()
+        } else {
+            lightColorScheme()
+        },
     ) {
         Surface(modifier = Modifier.fillMaxSize()) {
-            ListHome()
+            HardnessManualHome()
         }
     }
 }
 
+private data class CompoundEditorRequest(
+    val existing: RubberCompound?,
+)
+
+private data class GroupEditorRequest(
+    val compoundId: Long,
+    val existing: PartSpecificationGroup?,
+)
+
+private data class DeleteGroupRequest(
+    val compoundId: Long,
+    val group: PartSpecificationGroup,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ListHome() {
+private fun HardnessManualHome() {
     val appContext = LocalContext.current.applicationContext
-    val listStore = remember(appContext) { ShoreListStore(appContext) }
-    var lists by remember { mutableStateOf<List<ShoreList>>(emptyList()) }
-    var hasLoadedLists by remember { mutableStateOf(false) }
+    val store = remember(appContext) {
+        HardnessManualStore(appContext)
+    }
+    var compounds by remember {
+        mutableStateOf<List<RubberCompound>>(emptyList())
+    }
+    var hasLoaded by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
-    var showAddDialog by remember { mutableStateOf(false) }
-    var showAddTagDialog by remember { mutableStateOf(false) }
-    var selectedList by remember { mutableStateOf<ShoreList?>(null) }
+    var selectedCompoundId by remember {
+        mutableStateOf<Long?>(null)
+    }
+    var compoundEditorRequest by remember {
+        mutableStateOf<CompoundEditorRequest?>(null)
+    }
+    var groupEditorRequest by remember {
+        mutableStateOf<GroupEditorRequest?>(null)
+    }
+    var deleteGroupRequest by remember {
+        mutableStateOf<DeleteGroupRequest?>(null)
+    }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
-    fun replaceLists(updatedLists: List<ShoreList>) {
-        lists = updatedLists
+    fun persist(updatedCompounds: List<RubberCompound>) {
+        compounds = updatedCompounds
+
         coroutineScope.launch {
-            listStore.saveLists(updatedLists)
+            store.saveCompounds(updatedCompounds)
         }
     }
 
-    LaunchedEffect(listStore) {
-        listStore.lists.collectLatest { storedLists ->
-            lists = storedLists
-            selectedList = selectedList?.let { selected ->
-                storedLists.firstOrNull { it.id == selected.id }
+    fun updateCompound(updatedCompound: RubberCompound) {
+        val index = compounds.indexOfFirst {
+            it.id == updatedCompound.id
+        }
+
+        if (index < 0) {
+            return
+        }
+
+        val updatedCompounds = compounds.toMutableList().apply {
+            this[index] = updatedCompound
+        }
+        persist(updatedCompounds)
+    }
+
+    LaunchedEffect(store) {
+        store.compounds.collectLatest { storedCompounds ->
+            compounds = storedCompounds
+            selectedCompoundId = selectedCompoundId?.takeIf { selectedId ->
+                storedCompounds.any { it.id == selectedId }
             }
-            hasLoadedLists = true
+            hasLoaded = true
         }
     }
 
-    val normalizedSearchQuery = searchQuery.trim()
-    val visibleLists = if (normalizedSearchQuery.isEmpty()) {
-        lists
+    val normalizedQuery = searchQuery.trim()
+    val visibleCompounds = if (normalizedQuery.isEmpty()) {
+        compounds
     } else {
-        lists.filter { item ->
-            item.name.contains(
-                other = normalizedSearchQuery,
-                ignoreCase = true,
-            ) || item.tags.any { tag ->
-                tag.contains(
-                    other = normalizedSearchQuery,
-                    ignoreCase = true,
-                )
-            }
-        }
+        compounds.filter { it.matches(normalizedQuery) }
+    }
+    val selectedCompound = compounds.firstOrNull {
+        it.id == selectedCompoundId
     }
 
     Scaffold(
@@ -149,14 +155,14 @@ private fun ListHome() {
                 CenterAlignedTopAppBar(
                     title = {
                         Text(
-                            text = "列表",
+                            text = "硬度块手册",
                             fontWeight = FontWeight.SemiBold,
                         )
                     },
                 )
 
-                if (hasLoadedLists) {
-                    ListSearchField(
+                if (hasLoaded) {
+                    ManualSearchField(
                         query = searchQuery,
                         onQueryChange = { searchQuery = it },
                         onClear = { searchQuery = "" },
@@ -168,702 +174,299 @@ private fun ListHome() {
             SnackbarHost(hostState = snackbarHostState)
         },
         floatingActionButton = {
-            if (hasLoadedLists) {
+            if (hasLoaded) {
                 ExtendedFloatingActionButton(
-                    onClick = { showAddDialog = true },
+                    onClick = {
+                        compoundEditorRequest =
+                            CompoundEditorRequest(existing = null)
+                    },
                 ) {
-                    Text("＋ 添加列表")
+                    Text("＋ 添加胶料")
                 }
             }
         },
     ) { innerPadding ->
         when {
-            !hasLoadedLists -> LoadingListState(innerPadding)
-            lists.isEmpty() -> EmptyListState(innerPadding)
-            visibleLists.isEmpty() -> EmptySearchState(
-                innerPadding = innerPadding,
-                query = normalizedSearchQuery,
-            )
-            else -> LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    top = 12.dp,
-                    end = 16.dp,
-                    bottom = 96.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(
-                    items = visibleLists,
-                    key = { it.id },
-                ) { item ->
-                    SwipeListItem(
-                        item = item,
-                        onOpen = { selectedList = item },
-                        onDelete = {
-                            val deletedIndex = lists.indexOfFirst { it.id == item.id }
-                            if (deletedIndex >= 0) {
-                                val deletedItem = lists[deletedIndex]
-                                val updatedLists = lists.toMutableList().apply {
-                                    removeAt(deletedIndex)
-                                }
-                                replaceLists(updatedLists)
+            !hasLoaded -> {
+                ManualLoadingState(innerPadding)
+            }
 
-                                if (selectedList?.id == deletedItem.id) {
-                                    selectedList = null
-                                    showAddTagDialog = false
-                                }
+            compounds.isEmpty() -> {
+                EmptyManualState(innerPadding)
+            }
 
-                                coroutineScope.launch {
-                                    snackbarHostState.currentSnackbarData?.dismiss()
+            visibleCompounds.isEmpty() -> {
+                EmptyManualSearchState(
+                    innerPadding = innerPadding,
+                    query = normalizedQuery,
+                )
+            }
 
-                                    val result = snackbarHostState.showSnackbar(
-                                        message = "已删除“${deletedItem.name}”",
-                                        actionLabel = "撤回",
-                                        duration = SnackbarDuration.Long,
-                                    )
+            else -> {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        top = 12.dp,
+                        end = 16.dp,
+                        bottom = 96.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(
+                        items = visibleCompounds,
+                        key = RubberCompound::id,
+                    ) { compound ->
+                        SwipeCompoundCard(
+                            compound = compound,
+                            searchQuery = normalizedQuery,
+                            onOpen = {
+                                selectedCompoundId = compound.id
+                            },
+                            onDelete = {
+                                val deletedIndex = compounds
+                                    .indexOfFirst { it.id == compound.id }
+
+                                if (deletedIndex >= 0) {
+                                    val deletedCompound =
+                                        compounds[deletedIndex]
+                                    val updatedCompounds =
+                                        compounds.toMutableList().apply {
+                                            removeAt(deletedIndex)
+                                        }
+                                    persist(updatedCompounds)
 
                                     if (
-                                        result == SnackbarResult.ActionPerformed &&
-                                        lists.none { it.id == deletedItem.id }
+                                        selectedCompoundId ==
+                                        deletedCompound.id
                                     ) {
-                                        val restoredLists = lists.toMutableList().apply {
-                                            add(
-                                                index = deletedIndex.coerceIn(0, size),
-                                                element = deletedItem,
+                                        selectedCompoundId = null
+                                        compoundEditorRequest = null
+                                        groupEditorRequest = null
+                                        deleteGroupRequest = null
+                                    }
+
+                                    coroutineScope.launch {
+                                        snackbarHostState
+                                            .currentSnackbarData
+                                            ?.dismiss()
+
+                                        val result =
+                                            snackbarHostState.showSnackbar(
+                                                message =
+                                                    "已删除“${deletedCompound.compoundCode}”",
+                                                actionLabel = "撤回",
+                                                duration =
+                                                    SnackbarDuration.Long,
                                             )
+
+                                        if (
+                                            result ==
+                                            SnackbarResult.ActionPerformed &&
+                                            compounds.none {
+                                                it.id == deletedCompound.id
+                                            }
+                                        ) {
+                                            val restored =
+                                                compounds.toMutableList()
+                                                    .apply {
+                                                        add(
+                                                            index =
+                                                                deletedIndex
+                                                                    .coerceIn(
+                                                                        0,
+                                                                        size,
+                                                                    ),
+                                                            element =
+                                                                deletedCompound,
+                                                        )
+                                                    }
+                                            persist(restored)
                                         }
-                                        replaceLists(restoredLists)
                                     }
                                 }
-                            }
-                        },
-                    )
+                            },
+                        )
+                    }
                 }
             }
         }
     }
 
-    if (showAddDialog) {
-        AddListDialog(
-            onDismiss = { showAddDialog = false },
-            onConfirm = { name ->
-                val nextId = (lists.maxOfOrNull { it.id } ?: 0L) + 1L
-                replaceLists(
-                    lists + ShoreList(
-                        id = nextId,
-                        name = name,
-                    ),
+    if (
+        selectedCompound != null &&
+        compoundEditorRequest == null &&
+        groupEditorRequest == null &&
+        deleteGroupRequest == null
+    ) {
+        CompoundDetailSheet(
+            compound = selectedCompound,
+            onEditCompound = {
+                compoundEditorRequest =
+                    CompoundEditorRequest(selectedCompound)
+            },
+            onAddGroup = {
+                groupEditorRequest = GroupEditorRequest(
+                    compoundId = selectedCompound.id,
+                    existing = null,
                 )
-                showAddDialog = false
+            },
+            onEditGroup = { group ->
+                groupEditorRequest = GroupEditorRequest(
+                    compoundId = selectedCompound.id,
+                    existing = group,
+                )
+            },
+            onDeleteGroup = { group ->
+                deleteGroupRequest = DeleteGroupRequest(
+                    compoundId = selectedCompound.id,
+                    group = group,
+                )
+            },
+            onDismiss = {
+                selectedCompoundId = null
             },
         )
     }
 
-    selectedList?.let { item ->
-        if (!showAddTagDialog) {
-            ListContentSheet(
-                item = item,
-                onAddTagRequest = { showAddTagDialog = true },
-                onDeleteTag = { tag ->
-                    val itemIndex = lists.indexOfFirst { it.id == item.id }
-                    if (itemIndex >= 0) {
-                        val currentItem = lists[itemIndex]
-                        val updatedItem = currentItem.copy(
-                            tags = currentItem.tags.filterNot { it == tag },
-                        )
-                        val updatedLists = lists.toMutableList().apply {
-                            this[itemIndex] = updatedItem
-                        }
-                        replaceLists(updatedLists)
-                        selectedList = updatedItem
-                    }
-                },
-                onDismiss = { selectedList = null },
-            )
-        } else {
-            AddTagDialog(
-                item = item,
-                onDismiss = { showAddTagDialog = false },
-                onConfirm = { tag ->
-                    val itemIndex = lists.indexOfFirst { it.id == item.id }
-                    if (itemIndex >= 0) {
-                        val currentItem = lists[itemIndex]
-                        val updatedItem = currentItem.copy(
-                            tags = currentItem.tags + tag,
-                        )
-                        val updatedLists = lists.toMutableList().apply {
-                            this[itemIndex] = updatedItem
-                        }
-                        replaceLists(updatedLists)
-                        selectedList = updatedItem
-                    }
-                    showAddTagDialog = false
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun ListSearchField(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onClear: () -> Unit,
-) {
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChange,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(
-                start = 16.dp,
-                end = 16.dp,
-                bottom = 12.dp,
-            ),
-        label = { Text("搜索") },
-        placeholder = { Text("搜索列表名称或标签") },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                TextButton(onClick = onClear) {
-                    Text("清除")
-                }
-            }
-        },
-        singleLine = true,
-    )
-}
-
-@Composable
-private fun EmptySearchState(
-    innerPadding: PaddingValues,
-    query: String,
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(innerPadding)
-            .padding(horizontal = 32.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = "没有匹配的列表",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = "未找到与“$query”相关的列表名称或标签",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun LoadingListState(innerPadding: PaddingValues) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(innerPadding),
-        contentAlignment = Alignment.Center,
-    ) {
-        CircularProgressIndicator()
-    }
-}
-
-@Composable
-private fun EmptyListState(innerPadding: PaddingValues) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(innerPadding)
-            .padding(horizontal = 32.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = "还没有列表",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = "点击右下角的“添加列表”开始创建",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun SwipeListItem(
-    item: ShoreList,
-    onOpen: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    val dismissState = rememberSwipeToDismissBoxState()
-    val itemShape = RoundedCornerShape(20.dp)
-
-    SwipeToDismissBox(
-        state = dismissState,
-        modifier = Modifier.fillMaxWidth(),
-        enableDismissFromStartToEnd = false,
-        enableDismissFromEndToStart = true,
-        onDismiss = { direction ->
-            if (direction == SwipeToDismissBoxValue.EndToStart) {
-                onDelete()
-            }
-        },
-        backgroundContent = {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(itemShape)
-                    .background(MaterialTheme.colorScheme.errorContainer)
-                    .padding(horizontal = 24.dp),
-                contentAlignment = Alignment.CenterEnd,
-            ) {
-                Text(
-                    text = "删除",
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-        },
-    ) {
-        Card(
-            onClick = onOpen,
-            modifier = Modifier.fillMaxWidth(),
-            shape = itemShape,
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        ListGlyph(
-                            modifier = Modifier.size(26.dp),
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        Text(
-                            text = item.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = "向左滑动删除",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-
-                if (item.tags.isNotEmpty()) {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        item.tags.forEach { tag ->
-                            TagChip(tag = tag)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@Composable
-private fun ListContentSheet(
-    item: ShoreList,
-    onAddTagRequest: () -> Unit,
-    onDeleteTag: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var pendingDeleteTag by remember(item.id) { mutableStateOf<String?>(null) }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = 24.dp,
-                    end = 24.dp,
-                    bottom = 32.dp,
-                ),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    ListGlyph(
-                        modifier = Modifier.size(28.dp),
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(16.dp))
-
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text(
-                        text = item.name,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = "列表内容",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-            ) {
-                Column(
-                    modifier = Modifier.padding(
-                        horizontal = 24.dp,
-                        vertical = 40.dp,
-                    ),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        text = "这个列表还没有内容",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = "下一步可以在这里添加列表项",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "标签",
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-
-                    TextButton(onClick = onAddTagRequest) {
-                        Text("＋ 添加标签")
-                    }
-                }
-
-                if (item.tags.isEmpty()) {
-                    Text(
-                        text = "还没有标签",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    compoundEditorRequest?.let { request ->
+        CompoundEditorDialog(
+            initial = request.existing,
+            onDismiss = {
+                compoundEditorRequest = null
+            },
+            onSave = { form ->
+                val existing = request.existing
+                val updatedCompound = if (existing == null) {
+                    RubberCompound(
+                        id = (
+                            compounds.maxOfOrNull {
+                                it.id
+                            } ?: 0L
+                        ) + 1L,
+                        compoundCode = form.compoundCode,
+                        testPieceCureTemperatureC =
+                            form.testPieceCureTemperatureC,
+                        testPieceCureTimeMinutes =
+                            form.testPieceCureTimeMinutes,
+                        customBlockCureTimeMinutes =
+                            form.customBlockCureTimeMinutes,
+                        notes = form.notes,
                     )
                 } else {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        item.tags.forEach { tag ->
-                            EditableTagChip(
-                                tag = tag,
-                                isDeleteMode = pendingDeleteTag == tag,
-                                onLongPress = {
-                                    pendingDeleteTag = tag
-                                },
-                                onDelete = {
-                                    pendingDeleteTag = null
-                                    onDeleteTag(tag)
-                                },
-                            )
+                    existing.copy(
+                        compoundCode = form.compoundCode,
+                        testPieceCureTemperatureC =
+                            form.testPieceCureTemperatureC,
+                        testPieceCureTimeMinutes =
+                            form.testPieceCureTimeMinutes,
+                        customBlockCureTimeMinutes =
+                            form.customBlockCureTimeMinutes,
+                        notes = form.notes,
+                    )
+                }
+
+                if (existing == null) {
+                    persist(compounds + updatedCompound)
+                    selectedCompoundId = updatedCompound.id
+                } else {
+                    updateCompound(updatedCompound)
+                }
+
+                compoundEditorRequest = null
+            },
+        )
+    }
+
+    groupEditorRequest?.let { request ->
+        val compound = compounds.firstOrNull {
+            it.id == request.compoundId
+        }
+
+        if (compound != null) {
+            GroupEditorDialog(
+                compoundCode = compound.compoundCode,
+                initial = request.existing,
+                onDismiss = {
+                    groupEditorRequest = null
+                },
+                onSave = { form ->
+                    val existing = request.existing
+                    val updatedGroup = if (existing == null) {
+                        PartSpecificationGroup(
+                            id = (
+                                compound.groups.maxOfOrNull {
+                                    it.id
+                                } ?: 0L
+                            ) + 1L,
+                            partNumbers = form.partNumbers,
+                            hardness = form.hardness,
+                            productCategory = form.productCategory,
+                            color = form.color,
+                            tensileStrength = form.tensileStrength,
+                            elongation = form.elongation,
+                            notes = form.notes,
+                        )
+                    } else {
+                        existing.copy(
+                            partNumbers = form.partNumbers,
+                            hardness = form.hardness,
+                            productCategory = form.productCategory,
+                            color = form.color,
+                            tensileStrength = form.tensileStrength,
+                            elongation = form.elongation,
+                            notes = form.notes,
+                        )
+                    }
+
+                    val updatedGroups = if (existing == null) {
+                        compound.groups + updatedGroup
+                    } else {
+                        compound.groups.map { group ->
+                            if (group.id == updatedGroup.id) {
+                                updatedGroup
+                            } else {
+                                group
+                            }
                         }
                     }
 
-                    Text(
-                        text = "长按标签可切换为删除按钮",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    updateCompound(
+                        compound.copy(groups = updatedGroups),
+                    )
+                    groupEditorRequest = null
+                },
+            )
+        } else {
+            groupEditorRequest = null
+        }
+    }
+
+    deleteGroupRequest?.let { request ->
+        DeleteStandardGroupDialog(
+            group = request.group,
+            onDismiss = {
+                deleteGroupRequest = null
+            },
+            onConfirm = {
+                val compound = compounds.firstOrNull {
+                    it.id == request.compoundId
+                }
+
+                if (compound != null) {
+                    updateCompound(
+                        compound.copy(
+                            groups = compound.groups.filterNot {
+                                it.id == request.group.id
+                            },
+                        ),
                     )
                 }
-            }
 
-            TextButton(
-                onClick = onDismiss,
-                modifier = Modifier.align(Alignment.End),
-            ) {
-                Text("关闭")
-            }
-        }
-    }
-}
-
-@Composable
-private fun AddTagDialog(
-    item: ShoreList,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
-) {
-    var tagName by remember(item.id) { mutableStateOf("") }
-    val trimmedTag = tagName.trim()
-    val tagAlreadyExists = item.tags.any {
-        it.equals(trimmedTag, ignoreCase = true)
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("添加标签") },
-        text = {
-            OutlinedTextField(
-                value = tagName,
-                onValueChange = { tagName = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("标签名称") },
-                placeholder = { Text("例如：重要") },
-                supportingText = {
-                    if (tagAlreadyExists && trimmedTag.isNotEmpty()) {
-                        Text("该标签已存在")
-                    }
-                },
-                isError = tagAlreadyExists && trimmedTag.isNotEmpty(),
-                singleLine = true,
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onConfirm(trimmedTag) },
-                enabled = trimmedTag.isNotEmpty() && !tagAlreadyExists,
-            ) {
-                Text("添加")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
-        },
-    )
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun EditableTagChip(
-    tag: String,
-    isDeleteMode: Boolean,
-    onLongPress: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    val containerColor by animateColorAsState(
-        targetValue = if (isDeleteMode) {
-            MaterialTheme.colorScheme.error
-        } else {
-            MaterialTheme.colorScheme.secondaryContainer
-        },
-        animationSpec = tween(durationMillis = 220),
-        label = "tagDeleteContainerColor",
-    )
-    val contentColor by animateColorAsState(
-        targetValue = if (isDeleteMode) {
-            MaterialTheme.colorScheme.onError
-        } else {
-            MaterialTheme.colorScheme.onSecondaryContainer
-        },
-        animationSpec = tween(durationMillis = 220),
-        label = "tagDeleteContentColor",
-    )
-
-    Surface(
-        modifier = Modifier.combinedClickable(
-            onClick = {
-                if (isDeleteMode) {
-                    onDelete()
-                }
+                deleteGroupRequest = null
             },
-            onLongClick = onLongPress,
-        ),
-        shape = CircleShape,
-        color = containerColor,
-        contentColor = contentColor,
-    ) {
-        Box(
-            modifier = Modifier
-                .animateContentSize(
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessMediumLow,
-                    ),
-                )
-                .padding(
-                    horizontal = 12.dp,
-                    vertical = 6.dp,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Crossfade(
-                targetState = isDeleteMode,
-                animationSpec = tween(durationMillis = 160),
-                label = "tagDeleteText",
-            ) { deleteMode ->
-                Text(
-                    text = if (deleteMode) {
-                        "删除：$tag"
-                    } else {
-                        tag
-                    },
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = if (deleteMode) {
-                        FontWeight.SemiBold
-                    } else {
-                        FontWeight.Normal
-                    },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun TagChip(
-    tag: String,
-) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-    ) {
-        Text(
-            text = tag,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.labelLarge,
         )
     }
-}
-
-@Composable
-private fun ListGlyph(
-    modifier: Modifier = Modifier,
-) {
-    val iconColor = MaterialTheme.colorScheme.onPrimaryContainer
-
-    Canvas(modifier = modifier) {
-        val bulletX = 4.dp.toPx()
-        val lineStartX = 10.dp.toPx()
-        val lineEndX = size.width - 2.dp.toPx()
-        val bulletRadius = 1.7.dp.toPx()
-        val strokeWidth = 2.dp.toPx()
-        val rowYs = floatArrayOf(
-            5.dp.toPx(),
-            size.height / 2f,
-            size.height - 5.dp.toPx(),
-        )
-
-        rowYs.forEach { y ->
-            drawCircle(
-                color = iconColor,
-                radius = bulletRadius,
-                center = Offset(bulletX, y),
-            )
-            drawLine(
-                color = iconColor,
-                start = Offset(lineStartX, y),
-                end = Offset(lineEndX, y),
-                strokeWidth = strokeWidth,
-                cap = StrokeCap.Round,
-            )
-        }
-    }
-}
-
-@Composable
-private fun AddListDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
-) {
-    var name by remember { mutableStateOf("") }
-    val trimmedName = name.trim()
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("添加列表") },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("列表名称") },
-                placeholder = { Text("例如：工作任务") },
-                singleLine = true,
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onConfirm(trimmedName) },
-                enabled = trimmedName.isNotEmpty(),
-            ) {
-                Text("添加")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
-        },
-    )
 }
