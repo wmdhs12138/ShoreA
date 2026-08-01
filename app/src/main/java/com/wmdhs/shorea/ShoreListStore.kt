@@ -1,7 +1,6 @@
 package com.wmdhs.shorea
 
 import android.content.Context
-import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -16,24 +15,49 @@ private val Context.shoreManualDataStore by preferencesDataStore(
     name = "shore_lists",
 )
 
+internal data class HardnessManualState(
+    val compounds: List<RubberCompound>,
+    val loadError: String? = null,
+)
+
 internal class HardnessManualStore(
     private val context: Context,
 ) {
-    val compounds: Flow<List<RubberCompound>> = context.shoreManualDataStore.data
-        .catch { exception ->
-            if (exception is IOException) {
-                emit(emptyPreferences())
-            } else {
-                throw exception
-            }
-        }
+    val state: Flow<HardnessManualState> = context.shoreManualDataStore.data
         .map { preferences ->
             val manualJson = preferences[MANUAL_JSON_KEY]
 
             if (manualJson.isNullOrBlank()) {
-                decodeLegacyLists(preferences[LEGACY_LISTS_JSON_KEY])
+                HardnessManualState(
+                    compounds = decodeLegacyLists(
+                        preferences[LEGACY_LISTS_JSON_KEY],
+                    ),
+                )
             } else {
-                decodeCompounds(manualJson)
+                decodeCompoundsResult(manualJson).fold(
+                    onSuccess = { compounds ->
+                        HardnessManualState(compounds = compounds)
+                    },
+                    onFailure = { error ->
+                        HardnessManualState(
+                            compounds = emptyList(),
+                            loadError = error.message
+                                ?: "本地手册数据无法读取",
+                        )
+                    },
+                )
+            }
+        }
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(
+                    HardnessManualState(
+                        compounds = emptyList(),
+                        loadError = "无法读取本地存储：${exception.message ?: "I/O 错误"}",
+                    ),
+                )
+            } else {
+                throw exception
             }
         }
 
@@ -49,7 +73,7 @@ internal class HardnessManualStore(
     }
 }
 
-private fun encodeCompounds(compounds: List<RubberCompound>): String {
+internal fun encodeCompounds(compounds: List<RubberCompound>): String {
     val root = JSONObject()
         .put("schemaVersion", 1)
 
@@ -116,7 +140,40 @@ private fun encodeCompounds(compounds: List<RubberCompound>): String {
     return root.toString()
 }
 
-private fun decodeCompounds(rawValue: String): List<RubberCompound> =
+internal fun decodeCompoundsResult(
+    rawValue: String,
+): Result<List<RubberCompound>> = runCatching {
+    val root = JSONObject(rawValue)
+    require(root.optInt("schemaVersion", -1) == 1) {
+        "不支持的手册数据版本"
+    }
+    val sourceCompounds = root.optJSONArray("compounds")
+        ?: error("手册数据缺少胶料资料")
+    val compounds = decodeCompoundsLenient(rawValue)
+
+    require(compounds.size == sourceCompounds.length()) {
+        "手册中存在无效或重复的胶料资料"
+    }
+
+    compounds.forEachIndexed { index, compound ->
+        val sourceGroupCount = sourceCompounds
+            .getJSONObject(index)
+            .optJSONArray("groups")
+            ?.length()
+            ?: 0
+
+        require(compound.groups.size == sourceGroupCount) {
+            "胶料 ${compound.compoundCode} 中存在无效或重复的检测标准"
+        }
+    }
+
+    compounds
+}
+
+internal fun decodeCompounds(rawValue: String): List<RubberCompound> =
+    decodeCompoundsResult(rawValue).getOrDefault(emptyList())
+
+private fun decodeCompoundsLenient(rawValue: String): List<RubberCompound> =
     runCatching {
         val root = JSONObject(rawValue)
         val compoundsArray = root.optJSONArray("compounds")

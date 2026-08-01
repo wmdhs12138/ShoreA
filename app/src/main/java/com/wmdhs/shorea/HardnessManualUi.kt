@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import java.util.Locale
@@ -117,6 +118,46 @@ internal fun ManualLoadingState(
         contentAlignment = Alignment.Center,
     ) {
         CircularProgressIndicator()
+    }
+}
+
+@Composable
+internal fun ManualDataErrorState(
+    innerPadding: PaddingValues,
+    detail: String,
+    onRestoreBackup: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(innerPadding)
+            .padding(horizontal = 32.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "本地资料无法读取",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.error,
+            )
+            Text(
+                text = "为避免覆盖原数据，当前已停止编辑。可以从之前导出的备份恢复。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = onRestoreBackup) {
+                Text("从备份恢复")
+            }
+        }
     }
 }
 
@@ -376,38 +417,35 @@ private fun SearchMatchPreview(
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Text(
-                text = group.standardNumber.ifBlank {
-                    "未填写标准号"
-                },
-                style = MaterialTheme.typography.labelLarge,
-                color = if (group.standardNumber.isBlank()) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.primary
-                },
+                text = group.partNumbers.joinToString(" · "),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = group.partNumbers.joinToString(" · "),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
+                text = group.standardNumber.ifBlank {
+                    "未填写标准号"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
-        Text(
-            text = group.recommendation?.value
-                ?: group.hardness.testPieceHardness
-                    .takeIf { it.isNotBlank() }
-                    ?.let { "$it（试片参考）" }
-                ?: "无硬度资料",
-            style = MaterialTheme.typography.labelLarge,
-            color = if (group.recommendation == null) {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            } else {
-                MaterialTheme.colorScheme.primary
-            },
-            fontWeight = FontWeight.SemiBold,
-        )
+        val previewHardness = group.recommendation?.value
+            ?: group.hardness.testPieceHardness
+        if (previewHardness.isBlank()) {
+            Text(
+                text = "无硬度资料",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            HardnessValueDisplay(
+                value = previewHardness,
+                compact = true,
+                accent = group.recommendation != null,
+            )
+        }
     }
 }
 
@@ -749,15 +787,13 @@ private fun SpecificationGroupCard(
                         Arrangement.spacedBy(4.dp),
                 ) {
                     Text(
-                        text = "检测标准号",
+                        text = "送样部品",
                         style = MaterialTheme
                             .typography
                             .labelMedium,
                     )
                     Text(
-                        text = group.standardNumber.ifBlank {
-                            "未填写标准号"
-                        },
+                        text = group.partNumbers.joinToString(" · "),
                         style = MaterialTheme
                             .typography
                             .titleLarge,
@@ -770,16 +806,20 @@ private fun SpecificationGroupCard(
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 Text(
-                    text = "适用部品",
+                    text = "检测标准号",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme
                         .colorScheme
                         .onSurfaceVariant,
                 )
                 Text(
-                    text = group.partNumbers.joinToString(" · "),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    text = group.standardNumber.ifBlank {
+                        "未填写标准号"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme
+                        .colorScheme
+                        .onSurfaceVariant,
                 )
             }
 
@@ -860,6 +900,152 @@ private fun SpecificationGroupCard(
 }
 
 @Composable
+private fun HardnessValueDisplay(
+    value: String,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    showCalculatedRange: Boolean = false,
+    accent: Boolean = false,
+) {
+    val parsed = remember(value) { parseHardness(value) }
+    val mainStyle = if (compact) {
+        MaterialTheme.typography.titleMedium
+    } else {
+        MaterialTheme.typography.headlineMedium
+    }
+    val valueColor = if (accent) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        when (parsed) {
+            is ParsedHardness.Tolerance -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = parsed.nominal,
+                        style = mainStyle,
+                        color = valueColor,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Column(
+                        modifier = Modifier.padding(start = 3.dp),
+                        horizontalAlignment = Alignment.Start,
+                    ) {
+                        Text(
+                            text = "+${parsed.upperDeviation}",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 9.sp,
+                                lineHeight = 10.sp,
+                            ),
+                            color = valueColor,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = "−${parsed.lowerDeviation}",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 9.sp,
+                                lineHeight = 10.sp,
+                            ),
+                            color = valueColor,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Text(
+                        text = " A",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = valueColor,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                if (showCalculatedRange) {
+                    Text(
+                        text = "允许范围 ${parsed.lowerLimit} — ${parsed.upperLimit} A",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+
+            is ParsedHardness.Range -> {
+                Text(
+                    text = "${parsed.lower} — ${parsed.upper} A",
+                    style = mainStyle,
+                    color = valueColor,
+                    fontWeight = FontWeight.Bold,
+                )
+                if (showCalculatedRange) {
+                    Text(
+                        text = "下限 ${parsed.lower} · 上限 ${parsed.upper}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            is ParsedHardness.Minimum -> {
+                Text(
+                    text = "${if (parsed.inclusive) "≥" else ">"} ${parsed.value} A",
+                    style = mainStyle,
+                    color = valueColor,
+                    fontWeight = FontWeight.Bold,
+                )
+                if (showCalculatedRange) {
+                    Text(
+                        text = "最低要求",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            is ParsedHardness.Maximum -> {
+                Text(
+                    text = "${if (parsed.inclusive) "≤" else "<"} ${parsed.value} A",
+                    style = mainStyle,
+                    color = valueColor,
+                    fontWeight = FontWeight.Bold,
+                )
+                if (showCalculatedRange) {
+                    Text(
+                        text = "最高允许",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            is ParsedHardness.Exact -> {
+                Text(
+                    text = "${parsed.value} A",
+                    style = mainStyle,
+                    color = valueColor,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+
+            is ParsedHardness.Raw -> {
+                Text(
+                    text = parsed.raw.ifBlank { "—" },
+                    style = if (compact) {
+                        MaterialTheme.typography.bodyMedium
+                    } else {
+                        MaterialTheme.typography.titleLarge
+                    },
+                    color = valueColor,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun RecommendedHardnessBlock(
     group: PartSpecificationGroup,
 ) {
@@ -894,12 +1080,19 @@ private fun RecommendedHardnessBlock(
                     .onSurfaceVariant,
             )
 
-            Text(
-                text = recommendation?.value
-                    ?: "未配置送样硬度",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-            )
+            if (recommendation == null) {
+                Text(
+                    text = "未配置送样硬度",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+            } else {
+                HardnessValueDisplay(
+                    value = recommendation.value,
+                    showCalculatedRange = true,
+                    accent = true,
+                )
+            }
 
             Text(
                 text = when (recommendation?.source) {
@@ -953,11 +1146,18 @@ private fun HardnessDetailRow(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Text(
-                text = value.ifBlank { "—" },
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
+            if (value.isBlank()) {
+                Text(
+                    text = "—",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            } else {
+                HardnessValueDisplay(
+                    value = value,
+                    compact = true,
+                )
+            }
             Text(
                 text = supporting,
                 style = MaterialTheme.typography.bodySmall,
@@ -1024,14 +1224,14 @@ private fun RecommendationChip(
             }
         },
     ) {
-        Text(
-            text = recommendation.value,
+        HardnessValueDisplay(
+            value = recommendation.value,
             modifier = Modifier.padding(
                 horizontal = 12.dp,
                 vertical = 7.dp,
             ),
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
+            compact = true,
+            accent = true,
         )
     }
 }
@@ -1069,6 +1269,7 @@ private fun DetailValueCard(
 @Composable
 internal fun CompoundEditorDialog(
     initial: RubberCompound?,
+    compounds: List<RubberCompound>,
     onDismiss: () -> Unit,
     onSave: (CompoundFormData) -> Unit,
 ) {
@@ -1097,7 +1298,13 @@ internal fun CompoundEditorDialog(
     val normalizedCode = compoundCode
         .trim()
         .uppercase(Locale.ROOT)
-    val canSave = normalizedCode.isNotEmpty()
+    val duplicateCode = normalizedCode.isNotEmpty() &&
+        hasDuplicateCompoundCode(
+            compounds = compounds,
+            compoundCode = normalizedCode,
+            excludingId = initial?.id,
+        )
+    val canSave = normalizedCode.isNotEmpty() && !duplicateCode
 
     FullScreenEditorDialog(
         title = if (initial == null) {
@@ -1152,6 +1359,12 @@ internal fun CompoundEditorDialog(
                     placeholder = {
                         Text("例如：P01331201")
                     },
+                    supportingText = {
+                        if (duplicateCode) {
+                            Text("该胶料号已存在，请编辑原记录")
+                        }
+                    },
+                    isError = duplicateCode,
                     singleLine = true,
                 )
             }
@@ -1261,7 +1474,7 @@ internal fun CompoundEditorDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun GroupEditorDialog(
-    compoundCode: String,
+    compound: RubberCompound,
     initial: PartSpecificationGroup?,
     onDismiss: () -> Unit,
     onSave: (GroupFormData) -> Unit,
@@ -1304,13 +1517,47 @@ internal fun GroupEditorDialog(
     var notes by remember(initial?.id) {
         mutableStateOf(initial?.notes.orEmpty())
     }
+    var showPartConflictConfirmation by remember(initial?.id) {
+        mutableStateOf(false)
+    }
 
     val normalizedStandardNumber = standardNumber
         .trim()
         .uppercase(Locale.ROOT)
     val parsedPartNumbers = parsePartNumbers(partNumbersText)
+    val duplicateStandard = normalizedStandardNumber.isNotEmpty() &&
+        hasDuplicateStandardNumber(
+            compound = compound,
+            standardNumber = normalizedStandardNumber,
+            excludingGroupId = initial?.id,
+        )
+    val partNumberConflicts = findPartNumberConflicts(
+        compound = compound,
+        partNumbers = parsedPartNumbers,
+        excludingGroupId = initial?.id,
+    )
     val canSave = normalizedStandardNumber.isNotEmpty() &&
-        parsedPartNumbers.isNotEmpty()
+        parsedPartNumbers.isNotEmpty() &&
+        !duplicateStandard
+
+    fun submitForm() {
+        onSave(
+            GroupFormData(
+                standardNumber = normalizedStandardNumber,
+                partNumbers = parsedPartNumbers,
+                hardness = HardnessSet(
+                    testPieceHardness = testPieceHardness.trim(),
+                    blockHardness = blockHardness.trim(),
+                    productHardness = productHardness.trim(),
+                ),
+                productCategory = productCategory.trim(),
+                color = color.trim(),
+                tensileStrength = tensileStrength.trim(),
+                elongation = elongation.trim(),
+                notes = notes.trim(),
+            ),
+        )
+    }
 
     FullScreenEditorDialog(
         title = if (initial == null) {
@@ -1318,31 +1565,15 @@ internal fun GroupEditorDialog(
         } else {
             "编辑检测标准组"
         },
-        subtitle = compoundCode,
+        subtitle = compound.compoundCode,
         canSave = canSave,
         onDismiss = onDismiss,
         onSave = {
-            onSave(
-                GroupFormData(
-                    standardNumber = normalizedStandardNumber,
-                    partNumbers = parsedPartNumbers,
-                    hardness = HardnessSet(
-                        testPieceHardness =
-                            testPieceHardness.trim(),
-                        blockHardness =
-                            blockHardness.trim(),
-                        productHardness =
-                            productHardness.trim(),
-                    ),
-                    productCategory =
-                        productCategory.trim(),
-                    color = color.trim(),
-                    tensileStrength =
-                        tensileStrength.trim(),
-                    elongation = elongation.trim(),
-                    notes = notes.trim(),
-                ),
-            )
+            if (partNumberConflicts.isEmpty()) {
+                submitForm()
+            } else {
+                showPartConflictConfirmation = true
+            }
         },
     ) { contentPadding ->
         LazyColumn(
@@ -1361,7 +1592,7 @@ internal fun GroupEditorDialog(
                 EditorSectionTitle(
                     title = "检测标准",
                     description =
-                        "标准号是本组检测要求的唯一识别信息",
+                        "部品号面向客户展示，标准号用于内部区分检测要求",
                 )
             }
 
@@ -1377,8 +1608,15 @@ internal fun GroupEditorDialog(
                         Text("例如：B2-12-1078/A")
                     },
                     supportingText = {
-                        Text("标准号会显示在标准卡片最上方")
+                        Text(
+                            if (duplicateStandard) {
+                                "该检测标准号已存在，请编辑原记录"
+                            } else {
+                                "标准号作为内部参考，不会突出显示"
+                            },
+                        )
                     },
+                    isError = duplicateStandard,
                     singleLine = true,
                 )
             }
@@ -1406,7 +1644,16 @@ internal fun GroupEditorDialog(
                     },
                     supportingText = {
                         Text(
-                            "也支持使用逗号、分号或空格分隔；请填写完整部品号",
+                            text = if (partNumberConflicts.isEmpty()) {
+                                "也支持使用逗号、分号或空格分隔；请填写完整部品号"
+                            } else {
+                                "${partNumberConflicts.size} 个部品号已用于其他标准，保存时需要确认"
+                            },
+                            color = if (partNumberConflicts.isEmpty()) {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.tertiary
+                            },
                         )
                     },
                     minLines = 4,
@@ -1550,6 +1797,54 @@ internal fun GroupEditorDialog(
                 )
             }
         }
+    }
+
+    if (showPartConflictConfirmation) {
+        val visibleConflicts = partNumberConflicts.entries.take(6)
+        val hiddenCount = partNumberConflicts.size - visibleConflicts.size
+
+        AlertDialog(
+            onDismissRequest = {
+                showPartConflictConfirmation = false
+            },
+            title = { Text("部品号已用于其他标准") },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("以下部品号已出现在其他检测标准中：")
+                    visibleConflicts.forEach { (partNumber, standards) ->
+                        Text(
+                            text = "$partNumber：${standards.joinToString("、")}",
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    if (hiddenCount > 0) {
+                        Text("另有 $hiddenCount 个冲突部品号未显示")
+                    }
+                    Text("一个部品可能确实适用多个标准，请确认后再保存。")
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showPartConflictConfirmation = false
+                        submitForm()
+                    },
+                ) {
+                    Text("仍然保存")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showPartConflictConfirmation = false
+                    },
+                ) {
+                    Text("返回检查")
+                }
+            },
+        )
     }
 }
 
