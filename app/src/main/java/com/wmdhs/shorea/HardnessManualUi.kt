@@ -28,6 +28,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +39,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -49,6 +53,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -76,35 +83,266 @@ internal data class GroupFormData(
     val notes: String,
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ManualSearchField(
+internal fun ManualTopBar(
+    hasLoaded: Boolean,
+    actionsEnabled: Boolean,
+    searchActive: Boolean,
     query: String,
+    sortOrder: ManualSortOrder,
+    viewMode: ManualViewMode,
+    onSearchActiveChange: (Boolean) -> Unit,
     onQueryChange: (String) -> Unit,
-    onClear: () -> Unit,
+    onClearQuery: () -> Unit,
+    onSortOrderChange: (ManualSortOrder) -> Unit,
+    onViewModeChange: (ManualViewMode) -> Unit,
+    onImportExport: () -> Unit,
 ) {
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChange,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(
-                start = 16.dp,
-                end = 16.dp,
-                bottom = 12.dp,
-            ),
-        label = { Text("搜索") },
-        placeholder = {
-            Text("搜索胶料号、标准号、部品号或硬度")
+    var sortMenuExpanded by remember { mutableStateOf(false) }
+    var viewMenuExpanded by remember { mutableStateOf(false) }
+
+    TopAppBar(
+        title = {
+            if (searchActive && actionsEnabled) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = {
+                        Text("搜索胶料号、标准号、部品号或硬度")
+                    },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = onClearQuery) {
+                                ManualTopBarIcon(
+                                    icon = ManualTopBarIconType.CLOSE,
+                                )
+                            }
+                        }
+                    },
+                    singleLine = true,
+                )
+            } else {
+                Text(
+                    text = "硬度块手册",
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
         },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                TextButton(onClick = onClear) {
-                    Text("清除")
+        actions = {
+            IconButton(
+                enabled = actionsEnabled,
+                modifier = Modifier.semantics {
+                    contentDescription = if (searchActive) {
+                        "关闭搜索"
+                    } else {
+                        "搜索"
+                    }
+                },
+                onClick = {
+                    onSearchActiveChange(!searchActive)
+                },
+            ) {
+                ManualTopBarIcon(
+                    icon = if (searchActive) {
+                        ManualTopBarIconType.CLOSE
+                    } else {
+                        ManualTopBarIconType.SEARCH
+                    },
+                )
+            }
+
+            if (!searchActive) {
+                Box {
+                    IconButton(
+                        enabled = actionsEnabled,
+                        modifier = Modifier.semantics {
+                            contentDescription = "分类"
+                        },
+                    onClick = {
+                        sortMenuExpanded = true
+                    },
+                ) {
+                    ManualTopBarIcon(icon = ManualTopBarIconType.SORT)
+                }
+                DropdownMenu(
+                    expanded = sortMenuExpanded,
+                    onDismissRequest = {
+                        sortMenuExpanded = false
+                    },
+                ) {
+                    ManualSortOrder.entries.forEach { option ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = if (option == sortOrder) {
+                                        "✓ ${option.label}"
+                                    } else {
+                                        option.label
+                                    },
+                                )
+                            },
+                            onClick = {
+                                onSortOrderChange(option)
+                                sortMenuExpanded = false
+                            },
+                        )
+                    }
+                }
+            }
+
+            Box {
+                IconButton(
+                    enabled = actionsEnabled,
+                    modifier = Modifier.semantics {
+                        contentDescription = "视图"
+                    },
+                    onClick = {
+                        viewMenuExpanded = true
+                    },
+                ) {
+                    ManualTopBarIcon(icon = ManualTopBarIconType.VIEW)
+                }
+                DropdownMenu(
+                    expanded = viewMenuExpanded,
+                    onDismissRequest = {
+                        viewMenuExpanded = false
+                    },
+                ) {
+                    ManualViewMode.entries.forEach { option ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = if (option == viewMode) {
+                                        "✓ ${option.label}"
+                                    } else {
+                                        option.label
+                                    },
+                                )
+                            },
+                            onClick = {
+                                onViewModeChange(option)
+                                viewMenuExpanded = false
+                            },
+                        )
+                    }
+                }
+            }
+
+                if (hasLoaded) {
+                    TextButton(onClick = onImportExport) {
+                        Text("导入导出")
+                    }
                 }
             }
         },
-        singleLine = true,
     )
+}
+
+private enum class ManualTopBarIconType {
+    SEARCH,
+    SORT,
+    VIEW,
+    CLOSE,
+}
+
+@Composable
+private fun ManualTopBarIcon(
+    icon: ManualTopBarIconType,
+    modifier: Modifier = Modifier.size(24.dp),
+) {
+    val iconColor = MaterialTheme.colorScheme.onSurface
+
+    Canvas(modifier = modifier) {
+        val strokeWidth = 2.dp.toPx()
+
+        when (icon) {
+            ManualTopBarIconType.SEARCH -> {
+                drawCircle(
+                    color = iconColor,
+                    radius = size.minDimension * 0.28f,
+                    center = Offset(
+                        x = size.width * 0.41f,
+                        y = size.height * 0.41f,
+                    ),
+                    style = Stroke(width = strokeWidth),
+                )
+                drawLine(
+                    color = iconColor,
+                    start = Offset(
+                        x = size.width * 0.61f,
+                        y = size.height * 0.61f,
+                    ),
+                    end = Offset(
+                        x = size.width * 0.84f,
+                        y = size.height * 0.84f,
+                    ),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+            }
+
+            ManualTopBarIconType.SORT -> {
+                listOf(0.28f, 0.5f, 0.72f).forEachIndexed { index, y ->
+                    drawLine(
+                        color = iconColor,
+                        start = Offset(
+                            x = size.width * (0.2f + index * 0.08f),
+                            y = size.height * y,
+                        ),
+                        end = Offset(
+                            x = size.width * (0.8f - index * 0.08f),
+                            y = size.height * y,
+                        ),
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+
+            ManualTopBarIconType.VIEW -> {
+                val gap = size.width * 0.08f
+                val cellSize = (size.width - gap * 3) / 2f
+                for (row in 0..1) {
+                    for (column in 0..1) {
+                        drawRoundRect(
+                            color = iconColor,
+                            topLeft = Offset(
+                                x = gap + column * (cellSize + gap),
+                                y = gap + row * (cellSize + gap),
+                            ),
+                            size = androidx.compose.ui.geometry.Size(
+                                width = cellSize,
+                                height = cellSize,
+                            ),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(
+                                x = gap,
+                                y = gap,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            ManualTopBarIconType.CLOSE -> {
+                drawLine(
+                    color = iconColor,
+                    start = Offset(size.width * 0.25f, size.height * 0.25f),
+                    end = Offset(size.width * 0.75f, size.height * 0.75f),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = iconColor,
+                    start = Offset(size.width * 0.75f, size.height * 0.25f),
+                    end = Offset(size.width * 0.25f, size.height * 0.75f),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -224,6 +462,7 @@ internal fun EmptyManualSearchState(
 internal fun SwipeCompoundCard(
     compound: RubberCompound,
     searchQuery: String,
+    viewMode: ManualViewMode,
     onOpen: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -266,6 +505,34 @@ internal fun SwipeCompoundCard(
         CompoundCard(
             compound = compound,
             searchQuery = searchQuery,
+            viewMode = viewMode,
+            onOpen = onOpen,
+        )
+    }
+}
+
+@Composable
+private fun CompoundCard(
+    compound: RubberCompound,
+    searchQuery: String,
+    viewMode: ManualViewMode,
+    onOpen: () -> Unit,
+) {
+    when (viewMode) {
+        ManualViewMode.LIST -> ListCompoundCard(
+            compound = compound,
+            searchQuery = searchQuery,
+            onOpen = onOpen,
+        )
+
+        ManualViewMode.COMPACT -> CompactCompoundCard(
+            compound = compound,
+            onOpen = onOpen,
+        )
+
+        ManualViewMode.DETAILED -> DetailedCompoundCard(
+            compound = compound,
+            searchQuery = searchQuery,
             onOpen = onOpen,
         )
     }
@@ -273,7 +540,7 @@ internal fun SwipeCompoundCard(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CompoundCard(
+private fun ListCompoundCard(
     compound: RubberCompound,
     searchQuery: String,
     onOpen: () -> Unit,
@@ -397,6 +664,178 @@ private fun CompoundCard(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactCompoundCard(
+    compound: RubberCompound,
+    onOpen: () -> Unit,
+) {
+    val recommendation = compound.groups
+        .asSequence()
+        .mapNotNull { it.recommendation }
+        .firstOrNull()
+
+    Card(
+        onClick = onOpen,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = compound.compoundCode,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = "${compound.groups.size} 个标准 · ${compound.totalPartCount} 个部品",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            if (recommendation == null) {
+                Text(
+                    text = "未设硬度",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                HardnessValueDisplay(
+                    value = recommendation.value,
+                    compact = true,
+                    accent = true,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DetailedCompoundCard(
+    compound: RubberCompound,
+    searchQuery: String,
+    onOpen: () -> Unit,
+) {
+    val recommendations = compound.groups
+        .mapNotNull { it.recommendation }
+        .distinctBy { it.source to it.value }
+    val visibleGroups = if (searchQuery.isBlank()) {
+        compound.groups
+    } else {
+        compound.groups.filter { it.matches(searchQuery) }
+            .ifEmpty { compound.groups }
+    }.take(6)
+
+    Card(
+        onClick = onOpen,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = CircleShape,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CompoundGlyph(modifier = Modifier.size(27.dp))
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = compound.compoundCode,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "${compound.groups.size} 个检测标准 · ${compound.totalPartCount} 个部品",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            if (recommendations.isNotEmpty()) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    recommendations.forEach { recommendation ->
+                        RecommendationChip(recommendation = recommendation)
+                    }
+                }
+            }
+
+            if (
+                compound.testPieceCureTemperatureC.isNotBlank() ||
+                compound.testPieceCureTimeMinutes.isNotBlank()
+            ) {
+                Text(
+                    text = "试片硫化：${cureConditionText(
+                        temperature = compound.testPieceCureTemperatureC,
+                        time = compound.testPieceCureTimeMinutes,
+                    )}；硬度块：${compound.blockCureTimeMinutes.ifBlank { "时间未填" }} min",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            if (visibleGroups.isNotEmpty()) {
+                HorizontalDivider()
+                visibleGroups.forEach { group ->
+                    SearchMatchPreview(group = group)
+                }
+                if (compound.groups.size > visibleGroups.size) {
+                    Text(
+                        text = "还有 ${compound.groups.size - visibleGroups.size} 个检测标准，点击查看全部",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            } else {
+                Text(
+                    text = "尚未添加部品检测标准",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

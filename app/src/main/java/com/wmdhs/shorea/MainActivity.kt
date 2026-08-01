@@ -8,13 +8,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.MaterialTheme
@@ -25,7 +23,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -37,7 +34,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
@@ -97,6 +93,13 @@ private fun HardnessManualHome() {
     var hasLoaded by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
+    var searchActive by remember { mutableStateOf(false) }
+    var sortOrder by remember {
+        mutableStateOf(ManualSortOrder.COMPOUND_CODE)
+    }
+    var viewMode by remember {
+        mutableStateOf(ManualViewMode.LIST)
+    }
     var selectedCompoundId by remember {
         mutableStateOf<Long?>(null)
     }
@@ -276,46 +279,35 @@ private fun HardnessManualHome() {
     }
 
     val normalizedQuery = searchQuery.trim()
-    val visibleCompounds = if (normalizedQuery.isEmpty()) {
+    val filteredCompounds = if (normalizedQuery.isEmpty()) {
         compounds
     } else {
         compounds.filter { it.matches(normalizedQuery) }
     }
+    val visibleCompounds = sortCompounds(
+        compounds = filteredCompounds,
+        order = sortOrder,
+    )
     val selectedCompound = compounds.firstOrNull {
         it.id == selectedCompoundId
     }
 
     Scaffold(
         topBar = {
-            Column {
-                CenterAlignedTopAppBar(
-                    title = {
-                        Text(
-                            text = "硬度块手册",
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    },
-                    actions = {
-                        if (hasLoaded) {
-                            TextButton(
-                                onClick = {
-                                    backupActionsVisible = true
-                                },
-                            ) {
-                                Text("导入导出")
-                            }
-                        }
-                    },
-                )
-
-                if (hasLoaded && loadError == null) {
-                    ManualSearchField(
-                        query = searchQuery,
-                        onQueryChange = { searchQuery = it },
-                        onClear = { searchQuery = "" },
-                    )
-                }
-            }
+            ManualTopBar(
+                hasLoaded = hasLoaded,
+                actionsEnabled = hasLoaded && loadError == null,
+                searchActive = searchActive,
+                query = searchQuery,
+                sortOrder = sortOrder,
+                viewMode = viewMode,
+                onSearchActiveChange = { searchActive = it },
+                onQueryChange = { searchQuery = it },
+                onClearQuery = { searchQuery = "" },
+                onSortOrderChange = { sortOrder = it },
+                onViewModeChange = { viewMode = it },
+                onImportExport = { backupActionsVisible = true },
+            )
         },
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState)
@@ -379,6 +371,7 @@ private fun HardnessManualHome() {
                         SwipeCompoundCard(
                             compound = compound,
                             searchQuery = normalizedQuery,
+                            viewMode = viewMode,
                             onOpen = {
                                 selectedCompoundId = compound.id
                             },

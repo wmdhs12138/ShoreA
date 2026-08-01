@@ -1,6 +1,50 @@
 package com.wmdhs.shorea
 
 import java.math.BigDecimal
+import java.util.Locale
+
+internal enum class ManualSortOrder(
+    val label: String,
+) {
+    COMPOUND_CODE("胶料号"),
+    PART_NUMBER("部品号"),
+    HARDNESS("硬度"),
+}
+
+internal enum class ManualViewMode(
+    val label: String,
+) {
+    LIST("列表"),
+    COMPACT("紧凑"),
+    DETAILED("详细"),
+}
+
+internal fun sortCompounds(
+    compounds: List<RubberCompound>,
+    order: ManualSortOrder,
+): List<RubberCompound> = when (order) {
+    ManualSortOrder.COMPOUND_CODE -> compounds.sortedWith(
+        compareBy<RubberCompound> {
+            it.compoundCode.uppercase(Locale.ROOT)
+        }.thenBy(RubberCompound::id),
+    )
+
+    ManualSortOrder.PART_NUMBER -> compounds.sortedWith(
+        compareBy<RubberCompound> {
+            it.partNumberSortKey
+        }.thenBy {
+            it.compoundCode.uppercase(Locale.ROOT)
+        }.thenBy(RubberCompound::id),
+    )
+
+    ManualSortOrder.HARDNESS -> compounds.sortedWith(
+        compareBy<RubberCompound> { it.hardnessSortValue }
+            .thenBy { it.compoundCode.uppercase(Locale.ROOT) }
+            .thenBy(RubberCompound::id),
+    )
+}
+
+private val hardnessNumberPattern = Regex("""\d+(?:\.\d+)?""")
 
 internal data class RubberCompound(
     val id: Long,
@@ -28,6 +72,31 @@ internal data class RubberCompound(
 
     val usesCustomBlockCureTime: Boolean
         get() = customBlockCureTimeMinutes.isNotBlank()
+
+    val partNumberSortKey: String
+        get() = groups
+            .asSequence()
+            .flatMap { it.partNumbers.asSequence() }
+            .map { it.trim().uppercase(Locale.ROOT) }
+            .filter { it.isNotEmpty() }
+            .minOrNull()
+            ?: "\uFFFF"
+
+    val hardnessSortValue: Double
+        get() = groups
+            .asSequence()
+            .mapNotNull {
+                it.recommendation?.value
+                    ?: it.hardness.testPieceHardness
+            }
+            .mapNotNull { value ->
+                hardnessNumberPattern
+                    .find(value)
+                    ?.value
+                    ?.toDoubleOrNull()
+            }
+            .minOrNull()
+            ?: Double.POSITIVE_INFINITY
 
     fun matches(query: String): Boolean {
         if (query.isBlank()) {
