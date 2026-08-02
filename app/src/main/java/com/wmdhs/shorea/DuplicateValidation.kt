@@ -6,44 +6,48 @@ internal fun hasDuplicateCompoundCode(
     compounds: List<RubberCompound>,
     compoundCode: String,
     excludingId: Long? = null,
-): Boolean = compounds.any { compound ->
-    compound.id != excludingId &&
-        compound.compoundCode.equals(
-            compoundCode,
-            ignoreCase = true,
-        )
+): Boolean {
+    val normalized = compoundCode.trim()
+    return normalized.isNotEmpty() && compounds.any { compound ->
+        compound.id != excludingId &&
+            compound.compoundCode.trim().equals(normalized, ignoreCase = true)
+    }
 }
 
 internal fun hasDuplicateStandardNumber(
-    compound: RubberCompound,
+    entries: List<InspectionEntry>,
+    compoundId: Long,
     standardNumber: String,
-    excludingGroupId: Long? = null,
-): Boolean = compound.groups.any { group ->
-    group.id != excludingGroupId &&
-        group.standardNumber.equals(
-            standardNumber,
-            ignoreCase = true,
-        )
+    excludingEntryId: Long? = null,
+): Boolean {
+    val normalized = standardNumber.trim()
+    return normalized.isNotEmpty() && entries.any { entry ->
+        entry.id != excludingEntryId &&
+            entry.compoundId == compoundId &&
+            entry.standardNumber.trim().equals(normalized, ignoreCase = true)
+    }
 }
 
 internal fun findPartNumberConflicts(
-    compound: RubberCompound,
+    entries: List<InspectionEntry>,
+    compoundId: Long,
     partNumbers: List<String>,
-    excludingGroupId: Long? = null,
+    excludingEntryId: Long? = null,
 ): Map<String, List<String>> {
-    val wanted = partNumbers
-        .map { it.uppercase(Locale.ROOT) }
-        .toSet()
+    val wanted = normalizePartNumbers(partNumbers)
+        .associateBy { it.uppercase(Locale.ROOT) }
+        .keys
 
-    return compound.groups
+    return entries
         .asSequence()
-        .filter { it.id != excludingGroupId }
-        .flatMap { group ->
-            group.partNumbers.asSequence()
-                .filter { it.uppercase(Locale.ROOT) in wanted }
+        .filter { it.id != excludingEntryId && it.compoundId == compoundId }
+        .flatMap { entry ->
+            entry.partNumbers.asSequence()
+                .map(String::trim)
+                .filter { it.isNotEmpty() && it.uppercase(Locale.ROOT) in wanted }
                 .map { partNumber ->
                     partNumber.uppercase(Locale.ROOT) to
-                        group.standardNumber.ifBlank { "未填写标准号" }
+                        entry.standardNumber.ifBlank { "未填写标准号" }
                 }
         }
         .groupBy(

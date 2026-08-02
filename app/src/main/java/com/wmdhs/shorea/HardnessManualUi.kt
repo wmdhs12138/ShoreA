@@ -30,22 +30,23 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -58,6 +59,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -72,7 +74,7 @@ internal data class CompoundFormData(
     val notes: String,
 )
 
-internal data class GroupFormData(
+internal data class InspectionFormData(
     val standardNumber: String,
     val partNumbers: List<String>,
     val hardness: HardnessSet,
@@ -109,47 +111,31 @@ internal fun ManualTopBar(
                     value = query,
                     onValueChange = onQueryChange,
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = {
-                        Text("搜索胶料号、标准号、部品号或硬度")
-                    },
+                    placeholder = { Text("搜索胶料号、标准号、部品号或硬度") },
                     trailingIcon = {
                         if (query.isNotEmpty()) {
                             IconButton(onClick = onClearQuery) {
-                                ManualTopBarIcon(
-                                    icon = ManualTopBarIconType.CLOSE,
-                                )
+                                ManualTopBarIcon(ManualTopBarIconType.CLOSE)
                             }
                         }
                     },
                     singleLine = true,
                 )
             } else {
-                Text(
-                    text = "硬度块手册",
-                    fontWeight = FontWeight.SemiBold,
-                )
+                Text("硬度块手册", fontWeight = FontWeight.SemiBold)
             }
         },
         actions = {
             IconButton(
                 enabled = actionsEnabled,
                 modifier = Modifier.semantics {
-                    contentDescription = if (searchActive) {
-                        "关闭搜索"
-                    } else {
-                        "搜索"
-                    }
+                    contentDescription = if (searchActive) "关闭搜索" else "搜索"
                 },
-                onClick = {
-                    onSearchActiveChange(!searchActive)
-                },
+                onClick = { onSearchActiveChange(!searchActive) },
             ) {
                 ManualTopBarIcon(
-                    icon = if (searchActive) {
-                        ManualTopBarIconType.CLOSE
-                    } else {
-                        ManualTopBarIconType.SEARCH
-                    },
+                    if (searchActive) ManualTopBarIconType.CLOSE
+                    else ManualTopBarIconType.SEARCH,
                 )
             }
 
@@ -160,34 +146,25 @@ internal fun ManualTopBar(
                         modifier = Modifier.semantics {
                             contentDescription = "分类"
                         },
-                    onClick = {
-                        sortMenuExpanded = true
-                    },
-                ) {
-                    ManualTopBarIcon(icon = ManualTopBarIconType.SORT)
-                }
-                DropdownMenu(
-                    expanded = sortMenuExpanded,
-                    onDismissRequest = {
-                        sortMenuExpanded = false
-                    },
-                ) {
-                    ManualSortOrder.entries.forEach { option ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = if (option == sortOrder) {
-                                        "✓ ${option.label}"
-                                    } else {
-                                        option.label
-                                    },
-                                )
-                            },
-                            onClick = {
-                                onSortOrderChange(option)
-                                sortMenuExpanded = false
-                            },
-                        )
+                        onClick = { sortMenuExpanded = true },
+                    ) {
+                        ManualTopBarIcon(ManualTopBarIconType.SORT)
+                    }
+                    DropdownMenu(
+                        expanded = sortMenuExpanded,
+                        onDismissRequest = { sortMenuExpanded = false },
+                    ) {
+                        ManualSortOrder.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(if (option == sortOrder) "✓ ${option.label}" else option.label)
+                                },
+                                onClick = {
+                                    onSortOrderChange(option)
+                                    sortMenuExpanded = false
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -198,28 +175,18 @@ internal fun ManualTopBar(
                     modifier = Modifier.semantics {
                         contentDescription = "视图"
                     },
-                    onClick = {
-                        viewMenuExpanded = true
-                    },
+                    onClick = { viewMenuExpanded = true },
                 ) {
-                    ManualTopBarIcon(icon = ManualTopBarIconType.VIEW)
+                    ManualTopBarIcon(ManualTopBarIconType.VIEW)
                 }
                 DropdownMenu(
                     expanded = viewMenuExpanded,
-                    onDismissRequest = {
-                        viewMenuExpanded = false
-                    },
+                    onDismissRequest = { viewMenuExpanded = false },
                 ) {
                     ManualViewMode.entries.forEach { option ->
                         DropdownMenuItem(
                             text = {
-                                Text(
-                                    text = if (option == viewMode) {
-                                        "✓ ${option.label}"
-                                    } else {
-                                        option.label
-                                    },
-                                )
+                                Text(if (option == viewMode) "✓ ${option.label}" else option.label)
                             },
                             onClick = {
                                 onViewModeChange(option)
@@ -230,11 +197,8 @@ internal fun ManualTopBar(
                 }
             }
 
-                if (hasLoaded) {
-                    TextButton(onClick = onImportExport) {
-                        Text("导入导出")
-                    }
-                }
+            if (hasLoaded) {
+                TextButton(onClick = onImportExport) { Text("导入导出") }
             }
         },
     )
@@ -250,57 +214,38 @@ private enum class ManualTopBarIconType {
 @Composable
 private fun ManualTopBarIcon(
     icon: ManualTopBarIconType,
-    modifier: Modifier = Modifier.size(24.dp),
+    modifier: Modifier = Modifier,
 ) {
     val iconColor = MaterialTheme.colorScheme.onSurface
-
-    Canvas(modifier = modifier) {
+    Canvas(modifier = modifier.size(24.dp)) {
         val strokeWidth = 2.dp.toPx()
-
         when (icon) {
             ManualTopBarIconType.SEARCH -> {
                 drawCircle(
                     color = iconColor,
                     radius = size.minDimension * 0.28f,
-                    center = Offset(
-                        x = size.width * 0.41f,
-                        y = size.height * 0.41f,
-                    ),
+                    center = Offset(size.width * 0.41f, size.height * 0.41f),
                     style = Stroke(width = strokeWidth),
                 )
                 drawLine(
                     color = iconColor,
-                    start = Offset(
-                        x = size.width * 0.61f,
-                        y = size.height * 0.61f,
-                    ),
-                    end = Offset(
-                        x = size.width * 0.84f,
-                        y = size.height * 0.84f,
-                    ),
+                    start = Offset(size.width * 0.61f, size.height * 0.61f),
+                    end = Offset(size.width * 0.84f, size.height * 0.84f),
                     strokeWidth = strokeWidth,
                     cap = StrokeCap.Round,
                 )
             }
-
             ManualTopBarIconType.SORT -> {
                 listOf(0.28f, 0.5f, 0.72f).forEachIndexed { index, y ->
                     drawLine(
                         color = iconColor,
-                        start = Offset(
-                            x = size.width * (0.2f + index * 0.08f),
-                            y = size.height * y,
-                        ),
-                        end = Offset(
-                            x = size.width * (0.8f - index * 0.08f),
-                            y = size.height * y,
-                        ),
+                        start = Offset(size.width * (0.2f + index * 0.08f), size.height * y),
+                        end = Offset(size.width * (0.8f - index * 0.08f), size.height * y),
                         strokeWidth = strokeWidth,
                         cap = StrokeCap.Round,
                     )
                 }
             }
-
             ManualTopBarIconType.VIEW -> {
                 val gap = size.width * 0.08f
                 val cellSize = (size.width - gap * 3) / 2f
@@ -309,22 +254,15 @@ private fun ManualTopBarIcon(
                         drawRoundRect(
                             color = iconColor,
                             topLeft = Offset(
-                                x = gap + column * (cellSize + gap),
-                                y = gap + row * (cellSize + gap),
+                                gap + column * (cellSize + gap),
+                                gap + row * (cellSize + gap),
                             ),
-                            size = androidx.compose.ui.geometry.Size(
-                                width = cellSize,
-                                height = cellSize,
-                            ),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(
-                                x = gap,
-                                y = gap,
-                            ),
+                            size = androidx.compose.ui.geometry.Size(cellSize, cellSize),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(gap, gap),
                         )
                     }
                 }
             }
-
             ManualTopBarIconType.CLOSE -> {
                 drawLine(
                     color = iconColor,
@@ -346,13 +284,9 @@ private fun ManualTopBarIcon(
 }
 
 @Composable
-internal fun ManualLoadingState(
-    innerPadding: PaddingValues,
-) {
+internal fun ManualLoadingState(innerPadding: PaddingValues) {
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(innerPadding),
+        modifier = Modifier.fillMaxSize().padding(innerPadding),
         contentAlignment = Alignment.Center,
     ) {
         CircularProgressIndicator()
@@ -366,10 +300,7 @@ internal fun ManualDataErrorState(
     onRestoreBackup: () -> Unit,
 ) {
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(innerPadding)
-            .padding(horizontal = 32.dp),
+        modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 32.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -392,22 +323,15 @@ internal fun ManualDataErrorState(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = onRestoreBackup) {
-                Text("从备份恢复")
-            }
+            TextButton(onClick = onRestoreBackup) { Text("从备份恢复") }
         }
     }
 }
 
 @Composable
-internal fun EmptyManualState(
-    innerPadding: PaddingValues,
-) {
+internal fun EmptyManualState(innerPadding: PaddingValues) {
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(innerPadding)
-            .padding(horizontal = 32.dp),
+        modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 32.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -434,10 +358,7 @@ internal fun EmptyManualSearchState(
     query: String,
 ) {
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(innerPadding)
-            .padding(horizontal = 32.dp),
+        modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 32.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -445,7 +366,7 @@ internal fun EmptyManualSearchState(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = "没有匹配的胶料",
+                text = "没有匹配的检测标准",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -458,383 +379,329 @@ internal fun EmptyManualSearchState(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun SwipeCompoundCard(
-    compound: RubberCompound,
+internal fun SwipeManualHomeItem(
+    item: ManualHomeItem,
     searchQuery: String,
     viewMode: ManualViewMode,
     onOpen: () -> Unit,
-    onDelete: () -> Unit,
+    onDeleteInspection: (InspectionEntry) -> Unit,
+    onDeleteEmptyCompound: (RubberCompound) -> Unit,
 ) {
-    val dismissState = rememberSwipeToDismissBoxState()
-    val itemShape = RoundedCornerShape(20.dp)
-
-    SwipeToDismissBox(
-        state = dismissState,
-        modifier = Modifier.fillMaxWidth(),
-        enableDismissFromStartToEnd = false,
-        enableDismissFromEndToStart = true,
-        onDismiss = { direction ->
-            if (direction == SwipeToDismissBoxValue.EndToStart) {
-                onDelete()
-            }
-        },
-        backgroundContent = {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        color = MaterialTheme
-                            .colorScheme
-                            .errorContainer,
-                        shape = itemShape,
+    key(item.stableKey) {
+        val dismissState = rememberSwipeToDismissBoxState()
+        val itemShape = RoundedCornerShape(20.dp)
+        SwipeToDismissBox(
+            state = dismissState,
+            modifier = Modifier.fillMaxWidth(),
+            enableDismissFromStartToEnd = false,
+            enableDismissFromEndToStart = true,
+            onDismiss = { direction ->
+                if (direction == SwipeToDismissBoxValue.EndToStart) {
+                    when (item) {
+                        is ManualHomeItem.Inspection -> onDeleteInspection(item.entry)
+                        is ManualHomeItem.EmptyCompound -> onDeleteEmptyCompound(item.compound)
+                    }
+                }
+            },
+            backgroundContent = {
+                Box(
+                    modifier = Modifier.fillMaxSize()
+                        .background(MaterialTheme.colorScheme.errorContainer, itemShape)
+                        .padding(horizontal = 24.dp),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    Text(
+                        text = "删除",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        fontWeight = FontWeight.Bold,
                     )
-                    .padding(horizontal = 24.dp),
-                contentAlignment = Alignment.CenterEnd,
-            ) {
-                Text(
-                    text = "删除",
-                    color = MaterialTheme
-                        .colorScheme
-                        .onErrorContainer,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-        },
-    ) {
-        CompoundCard(
-            compound = compound,
+                }
+            },
+        ) {
+            ManualHomeCard(
+                item = item,
+                searchQuery = searchQuery,
+                viewMode = viewMode,
+                onOpen = onOpen,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ManualHomeCard(
+    item: ManualHomeItem,
+    searchQuery: String,
+    viewMode: ManualViewMode,
+    onOpen: () -> Unit,
+) {
+    when (item) {
+        is ManualHomeItem.Inspection -> InspectionHomeCard(
+            compound = item.compound,
+            entry = item.entry,
             searchQuery = searchQuery,
+            viewMode = viewMode,
+            onOpen = onOpen,
+        )
+        is ManualHomeItem.EmptyCompound -> EmptyCompoundHomeCard(
+            compound = item.compound,
             viewMode = viewMode,
             onOpen = onOpen,
         )
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CompoundCard(
+private fun InspectionHomeCard(
     compound: RubberCompound,
+    entry: InspectionEntry,
     searchQuery: String,
     viewMode: ManualViewMode,
     onOpen: () -> Unit,
 ) {
-    when (viewMode) {
-        ManualViewMode.LIST -> ListCompoundCard(
-            compound = compound,
-            searchQuery = searchQuery,
-            onOpen = onOpen,
-        )
-
-        ManualViewMode.COMPACT -> CompactCompoundCard(
-            compound = compound,
-            onOpen = onOpen,
-        )
-
-        ManualViewMode.DETAILED -> DetailedCompoundCard(
-            compound = compound,
-            searchQuery = searchQuery,
-            onOpen = onOpen,
-        )
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun ListCompoundCard(
-    compound: RubberCompound,
-    searchQuery: String,
-    onOpen: () -> Unit,
-) {
-    val recommendations = compound.groups
-        .mapNotNull { it.recommendation }
-        .distinctBy { recommendation ->
-            recommendation.source to recommendation.value
-        }
-    val matchingGroups = if (searchQuery.isBlank()) {
-        emptyList()
-    } else {
-        compound.groups
-            .filter { it.matches(searchQuery) }
-            .take(3)
-    }
-
+    val shape = RoundedCornerShape(if (viewMode == ManualViewMode.COMPACT) 16.dp else 20.dp)
     Card(
         onClick = onOpen,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor =
-                MaterialTheme.colorScheme.surfaceContainerHigh,
-        ),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .background(
-                            color = MaterialTheme
-                                .colorScheme
-                                .primaryContainer,
-                            shape = CircleShape,
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CompoundGlyph(
-                        modifier = Modifier.size(27.dp),
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(16.dp))
-
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text(
-                        text = compound.compoundCode,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = buildString {
-                            append(compound.groups.size)
-                            append(" 个检测标准 · ")
-                            append(compound.totalPartCount)
-                            append(" 个部品")
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme
-                            .colorScheme
-                            .onSurfaceVariant,
-                    )
-                }
-            }
-
-            if (recommendations.isEmpty()) {
-                Text(
-                    text = if (compound.groups.isEmpty()) {
-                        "尚未添加部品检测标准"
-                    } else {
-                        "尚未配置可用于送样的硬度块或产品硬度"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme
-                        .colorScheme
-                        .onSurfaceVariant,
-                )
-            } else {
-                FlowRow(
-                    horizontalArrangement =
-                        Arrangement.spacedBy(8.dp),
-                    verticalArrangement =
-                        Arrangement.spacedBy(8.dp),
-                ) {
-                    recommendations.forEach { recommendation ->
-                        RecommendationChip(
-                            recommendation = recommendation,
-                        )
-                    }
-                }
-            }
-
-            if (matchingGroups.isNotEmpty()) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme
-                        .colorScheme
-                        .surfaceContainerLow,
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement =
-                            Arrangement.spacedBy(8.dp),
-                    ) {
-                        matchingGroups.forEach { group ->
-                            SearchMatchPreview(group = group)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CompactCompoundCard(
-    compound: RubberCompound,
-    onOpen: () -> Unit,
-) {
-    val recommendation = compound.groups
-        .asSequence()
-        .mapNotNull { it.recommendation }
-        .firstOrNull()
-
-    Card(
-        onClick = onOpen,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = shape,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         ),
     ) {
+        when (viewMode) {
+            ManualViewMode.LIST -> InspectionListCardContent(
+                compound = compound,
+                entry = entry,
+                searchQuery = searchQuery,
+            )
+            ManualViewMode.COMPACT -> InspectionCompactCardContent(
+                compound = compound,
+                entry = entry,
+            )
+            ManualViewMode.DETAILED -> InspectionDetailedCardContent(
+                compound = compound,
+                entry = entry,
+                searchQuery = searchQuery,
+            )
+        }
+    }
+}
+
+@Composable
+private fun InspectionListCardContent(
+    compound: RubberCompound,
+    entry: InspectionEntry,
+    searchQuery: String,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {
+                PartNumberList(entry.partNumbers)
+                HomeMetaLine("胶料号", compound.compoundCode)
+                HomeMetaLine("标准号", entry.standardNumber.ifBlank { "未填写" })
+            }
+            PrimaryHardnessDisplay(
+                hardness = entry.effectiveHardness,
+                compact = true,
+                modifier = Modifier.width(112.dp),
+            )
+        }
+        SecondaryHardnessRow(
+            hardness = entry.hardness,
+            primarySource = entry.effectiveHardness?.source,
+            compact = true,
+        )
+        SearchEntryHint(entry = entry, query = searchQuery)
+    }
+}
+
+@Composable
+private fun InspectionCompactCardContent(
+    compound: RubberCompound,
+    entry: InspectionEntry,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                PartNumberList(entry.partNumbers, compact = true)
                 Text(
-                    text = compound.compoundCode,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = "${compound.groups.size} 个标准 · ${compound.totalPartCount} 个部品",
+                    text = "${compound.compoundCode} · 标准号 ${entry.standardNumber.ifBlank { "未填写" }}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-
-            if (recommendation == null) {
-                Text(
-                    text = "未设硬度",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                HardnessValueDisplay(
-                    value = recommendation.value,
-                    compact = true,
-                    accent = true,
-                )
-            }
+            PrimaryHardnessDisplay(
+                hardness = entry.effectiveHardness,
+                compact = true,
+                modifier = Modifier.width(100.dp),
+            )
         }
+        SecondaryHardnessRow(
+            hardness = entry.hardness,
+            primarySource = entry.effectiveHardness?.source,
+            compact = true,
+        )
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DetailedCompoundCard(
+private fun InspectionDetailedCardContent(
     compound: RubberCompound,
+    entry: InspectionEntry,
     searchQuery: String,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(11.dp),
+    ) {
+        PartNumberList(entry.partNumbers)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                HomeMetaLine("胶料号", compound.compoundCode)
+                HomeMetaLine("标准号", entry.standardNumber.ifBlank { "未填写" })
+            }
+            PrimaryHardnessDisplay(entry.effectiveHardness, compact = true)
+        }
+        HorizontalDivider()
+        AllHardnessDetails(entry.hardness, primarySource = entry.effectiveHardness?.source)
+        if (
+            compound.testPieceCureTemperatureC.isNotBlank() ||
+            compound.testPieceCureTimeMinutes.isNotBlank()
+        ) {
+            Text(
+                text = "试片硫化：${cureConditionText(compound.testPieceCureTemperatureC, compound.testPieceCureTimeMinutes)}；硬度块：${compound.blockCureTimeMinutes.ifBlank { "时间未填" }} min",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        OptionalDetailRow("产品类别", entry.productCategory)
+        OptionalDetailRow("颜色", entry.color)
+        OptionalDetailRow("拉伸强度", entry.tensileStrength)
+        OptionalDetailRow("伸长率", entry.elongation)
+        OptionalDetailRow("检测标准备注", entry.notes)
+        OptionalDetailRow("胶料备注", compound.notes)
+        SearchEntryHint(entry = entry, query = searchQuery)
+    }
+}
+
+@Composable
+private fun EmptyCompoundHomeCard(
+    compound: RubberCompound,
+    viewMode: ManualViewMode,
     onOpen: () -> Unit,
 ) {
-    val recommendations = compound.groups
-        .mapNotNull { it.recommendation }
-        .distinctBy { it.source to it.value }
-    val visibleGroups = if (searchQuery.isBlank()) {
-        compound.groups
-    } else {
-        compound.groups.filter { it.matches(searchQuery) }
-            .ifEmpty { compound.groups }
-    }.take(6)
-
     Card(
         onClick = onOpen,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(if (viewMode == ManualViewMode.COMPACT) 16.dp else 20.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         ),
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = CircleShape,
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CompoundGlyph(modifier = Modifier.size(27.dp))
-                }
-
-                Spacer(modifier = Modifier.width(16.dp))
-
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text(
-                        text = compound.compoundCode,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = "${compound.groups.size} 个检测标准 · ${compound.totalPartCount} 个部品",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            if (recommendations.isNotEmpty()) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    recommendations.forEach { recommendation ->
-                        RecommendationChip(recommendation = recommendation)
-                    }
-                }
-            }
-
+            Text(
+                text = compound.compoundCode,
+                style = if (viewMode == ManualViewMode.COMPACT) {
+                    MaterialTheme.typography.titleMedium
+                } else {
+                    MaterialTheme.typography.titleLarge
+                },
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "尚未添加检测标准",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             if (
                 compound.testPieceCureTemperatureC.isNotBlank() ||
                 compound.testPieceCureTimeMinutes.isNotBlank()
             ) {
                 Text(
-                    text = "试片硫化：${cureConditionText(
-                        temperature = compound.testPieceCureTemperatureC,
-                        time = compound.testPieceCureTimeMinutes,
-                    )}；硬度块：${compound.blockCureTimeMinutes.ifBlank { "时间未填" }} min",
+                    text = "试片硫化：${cureConditionText(compound.testPieceCureTemperatureC, compound.testPieceCureTimeMinutes)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-
-            if (visibleGroups.isNotEmpty()) {
-                HorizontalDivider()
-                visibleGroups.forEach { group ->
-                    SearchMatchPreview(group = group)
-                }
-                if (compound.groups.size > visibleGroups.size) {
-                    Text(
-                        text = "还有 ${compound.groups.size - visibleGroups.size} 个检测标准，点击查看全部",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            } else {
+            if (compound.notes.isNotBlank()) {
                 Text(
-                    text = "尚未添加部品检测标准",
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = compound.notes,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PartNumberList(
+    partNumbers: List<String>,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+) {
+    val normalized = normalizePartNumbers(partNumbers)
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 7.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp),
+    ) {
+        normalized.forEach { partNumber ->
+            Surface(
+                shape = RoundedCornerShape(if (compact) 7.dp else 9.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            ) {
+                Text(
+                    text = partNumber,
+                    modifier = Modifier.padding(
+                        horizontal = if (compact) 7.dp else 9.dp,
+                        vertical = if (compact) 3.dp else 5.dp,
+                    ),
+                    style = if (compact) {
+                        MaterialTheme.typography.labelLarge
+                    } else {
+                        MaterialTheme.typography.titleMedium
+                    },
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -842,76 +709,161 @@ private fun DetailedCompoundCard(
 }
 
 @Composable
-private fun SearchMatchPreview(
-    group: PartSpecificationGroup,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement =
-            Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = group.partNumbers.joinToString(" · "),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = group.standardNumber.ifBlank {
-                    "未填写标准号"
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+private fun HomeMetaLine(label: String, value: String) {
+    Text(
+        text = "$label · $value",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
 
-        val previewHardness = group.recommendation?.value
-            ?: group.hardness.testPieceHardness
-        if (previewHardness.isBlank()) {
+@Composable
+private fun PrimaryHardnessDisplay(
+    hardness: EffectiveHardness?,
+    compact: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        if (hardness == null) {
             Text(
-                text = "无硬度资料",
-                style = MaterialTheme.typography.labelLarge,
+                text = "未设硬度",
+                style = if (compact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.SemiBold,
             )
         } else {
             HardnessValueDisplay(
-                value = previewHardness,
-                compact = true,
-                accent = group.recommendation != null,
+                value = hardness.rawValue,
+                compact = compact,
+                accent = true,
+            )
+            Text(
+                text = hardness.source.label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
             )
         }
     }
 }
 
-@OptIn(
-    ExperimentalMaterial3Api::class,
-    ExperimentalLayoutApi::class,
-)
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SecondaryHardnessRow(
+    hardness: HardnessSet,
+    primarySource: HardnessSource?,
+    compact: Boolean,
+) {
+    val values = hardness.allValues().filter { it.first != primarySource }
+    if (values.isEmpty()) return
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        values.forEach { (source, value) ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = source.label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                HardnessValueDisplay(value = value, compact = compact)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AllHardnessDetails(
+    hardness: HardnessSet,
+    primarySource: HardnessSource?,
+) {
+    val values = hardness.allValues().filter { it.first != primarySource }
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        values.forEach { (source, value) ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Text(
+                    text = source.label,
+                    modifier = Modifier.width(52.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (source == primarySource) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    fontWeight = if (source == primarySource) FontWeight.SemiBold else null,
+                )
+                HardnessValueDisplay(value = value, compact = true)
+            }
+        }
+        if (hardness.allValues().isEmpty()) {
+            Text(
+                text = "未设硬度",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchEntryHint(entry: InspectionEntry, query: String) {
+    if (query.isBlank()) return
+    val matches = buildList {
+        if (entry.productCategory.contains(query, ignoreCase = true)) add("产品类别")
+        if (entry.color.contains(query, ignoreCase = true)) add("颜色")
+        if (entry.tensileStrength.contains(query, ignoreCase = true)) add("拉伸强度")
+        if (entry.elongation.contains(query, ignoreCase = true)) add("伸长率")
+        if (entry.notes.contains(query, ignoreCase = true)) add("备注")
+    }
+    if (matches.isNotEmpty()) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(10.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+        ) {
+            Text(
+                text = "搜索命中：${matches.joinToString("、")}",
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun CompoundDetailSheet(
     compound: RubberCompound,
+    entries: List<InspectionEntry>,
+    highlightedEntryId: Long?,
     onEditCompound: () -> Unit,
-    onAddGroup: () -> Unit,
-    onEditGroup: (PartSpecificationGroup) -> Unit,
-    onDeleteGroup: (PartSpecificationGroup) -> Unit,
+    onAddInspection: () -> Unit,
+    onEditInspection: (InspectionEntry) -> Unit,
+    onDeleteInspection: (InspectionEntry) -> Unit,
+    onDeleteCompound: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-    ) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(
-                start = 20.dp,
-                end = 20.dp,
-                bottom = 32.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {
                 Row(
@@ -919,56 +871,31 @@ internal fun CompoundDetailSheet(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .background(
-                                color = MaterialTheme
-                                    .colorScheme
-                                    .primaryContainer,
-                                shape = CircleShape,
-                            ),
+                        modifier = Modifier.size(48.dp).background(
+                            MaterialTheme.colorScheme.primaryContainer,
+                            CircleShape,
+                        ),
                         contentAlignment = Alignment.Center,
                     ) {
-                        CompoundGlyph(
-                            modifier = Modifier.size(29.dp),
-                        )
+                        CompoundGlyph(Modifier.size(29.dp))
                     }
-
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement =
-                            Arrangement.spacedBy(2.dp),
-                    ) {
+                    Spacer(Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = compound.compoundCode,
-                            style = MaterialTheme
-                                .typography
-                                .headlineSmall,
+                            style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            text = "${compound.totalPartCount} 个关联部品",
-                            style = MaterialTheme
-                                .typography
-                                .bodyMedium,
-                            color = MaterialTheme
-                                .colorScheme
-                                .onSurfaceVariant,
+                            text = "${entries.size} 个检测标准 · ${entries.sumOf { it.partNumbers.size }} 个部品关联",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-
-                    TextButton(onClick = onEditCompound) {
-                        Text("编辑胶料")
-                    }
+                    TextButton(onClick = onEditCompound) { Text("编辑胶料") }
                 }
             }
-
-            item {
-                CureConditionCard(compound = compound)
-            }
-
+            item { CureConditionCard(compound) }
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -977,89 +904,52 @@ internal fun CompoundDetailSheet(
                     Text(
                         text = "检测标准",
                         modifier = Modifier.weight(1f),
-                        style = MaterialTheme
-                            .typography
-                            .titleLarge,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold,
                     )
-
-                    TextButton(onClick = onAddGroup) {
-                        Text("＋ 添加标准")
-                    }
+                    TextButton(onClick = onAddInspection) { Text("＋ 添加标准") }
                 }
             }
-
-            if (compound.groups.isEmpty()) {
+            if (entries.isEmpty()) {
                 item {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(18.dp),
-                        color = MaterialTheme
-                            .colorScheme
-                            .surfaceContainerLow,
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
                     ) {
                         Column(
-                            modifier = Modifier.padding(
-                                horizontal = 20.dp,
-                                vertical = 28.dp,
-                            ),
-                            horizontalAlignment =
-                                Alignment.CenterHorizontally,
-                            verticalArrangement =
-                                Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 28.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            Text(
-                                text = "还没有检测标准",
-                                style = MaterialTheme
-                                    .typography
-                                    .titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
+                            Text("还没有检测标准", fontWeight = FontWeight.SemiBold)
                             Text(
                                 text = "添加标准号、部品号与三类硬度资料",
-                                style = MaterialTheme
-                                    .typography
-                                    .bodyMedium,
-                                color = MaterialTheme
-                                    .colorScheme
-                                    .onSurfaceVariant,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
                 }
             } else {
-                items(
-                    count = compound.groups.size,
-                    key = { index ->
-                        compound.groups[index].id
-                    },
-                ) { index ->
-                    SpecificationGroupCard(
-                        group = compound.groups[index],
-                        onEdit = {
-                            onEditGroup(compound.groups[index])
-                        },
-                        onDelete = {
-                            onDeleteGroup(compound.groups[index])
-                        },
+                items(entries, key = InspectionEntry::id) { entry ->
+                    InspectionEntryDetailCard(
+                        entry = entry,
+                        highlighted = entry.id == highlightedEntryId,
+                        onEdit = { onEditInspection(entry) },
+                        onDelete = { onDeleteInspection(entry) },
                     )
                 }
             }
-
             if (compound.notes.isNotBlank()) {
-                item {
-                    DetailValueCard(
-                        label = "胶料备注",
-                        value = compound.notes,
-                    )
+                item { DetailValueCard("胶料备注", compound.notes) }
+            }
+            item {
+                TextButton(onClick = onDeleteCompound, modifier = Modifier.fillMaxWidth()) {
+                    Text("删除胶料", color = MaterialTheme.colorScheme.error)
                 }
             }
-
             item {
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
+                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
                     Text("关闭")
                 }
             }
@@ -1068,56 +958,75 @@ internal fun CompoundDetailSheet(
 }
 
 @Composable
-private fun CureConditionCard(
-    compound: RubberCompound,
+private fun InspectionEntryDetailCard(
+    entry: InspectionEntry,
+    highlighted: Boolean,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
 ) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (highlighted) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            },
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(17.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            PartNumberList(entry.partNumbers)
+            HomeMetaLine("检测标准号", entry.standardNumber.ifBlank { "未填写" })
+            PrimaryHardnessBlock(entry)
+            AllHardnessDetails(entry.hardness, entry.effectiveHardness?.source)
+            OptionalDetailRow("产品类别", entry.productCategory)
+            OptionalDetailRow("颜色", entry.color)
+            OptionalDetailRow("拉伸强度", entry.tensileStrength)
+            OptionalDetailRow("伸长率", entry.elongation)
+            OptionalDetailRow("备注", entry.notes)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onEdit) { Text("编辑") }
+                TextButton(onClick = onDelete) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CureConditionCard(compound: RubberCompound) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme
-            .colorScheme
-            .surfaceContainerLow,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                text = "制作条件",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("制作条件", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             if (
                 compound.testPieceCureTemperatureC.isBlank() &&
                 compound.testPieceCureTimeMinutes.isBlank()
             ) {
-                Text(
-                    text = "尚未填写试片硫化条件",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme
-                        .colorScheme
-                        .onSurfaceVariant,
-                )
+                Text("尚未填写试片硫化条件", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 ConditionRow(
                     label = "试片",
                     value = cureConditionText(
-                        temperature =
-                            compound.testPieceCureTemperatureC,
-                        time = compound.testPieceCureTimeMinutes,
+                        compound.testPieceCureTemperatureC,
+                        compound.testPieceCureTimeMinutes,
                     ),
                 )
                 ConditionRow(
                     label = "硬度块",
                     value = cureConditionText(
-                        temperature =
-                            compound.testPieceCureTemperatureC,
-                        time = compound.blockCureTimeMinutes,
+                        compound.testPieceCureTemperatureC,
+                        compound.blockCureTimeMinutes,
                     ),
-                    supporting = if (
-                        compound.usesCustomBlockCureTime
-                    ) {
+                    supporting = if (compound.usesCustomBlockCureTime) {
                         "使用自定义时间"
                     } else {
                         "按试片时间自动 ×2"
@@ -1129,11 +1038,7 @@ private fun CureConditionCard(
 }
 
 @Composable
-private fun ConditionRow(
-    label: String,
-    value: String,
-    supporting: String = "",
-) {
+private fun ConditionRow(label: String, value: String, supporting: String = "") {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -1142,198 +1047,39 @@ private fun ConditionRow(
         Text(
             text = label,
             modifier = Modifier.width(64.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme
-                .colorScheme
-                .onSurfaceVariant,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(value, fontWeight = FontWeight.SemiBold)
             if (supporting.isNotBlank()) {
-                Text(
-                    text = supporting,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme
-                        .colorScheme
-                        .onSurfaceVariant,
-                )
+                Text(supporting, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
 }
 
-private fun cureConditionText(
-    temperature: String,
-    time: String,
-): String {
-    val temperatureText = temperature
-        .takeIf { it.isNotBlank() }
-        ?.let { "$it℃" }
-        ?: "温度未填"
-    val timeText = time
-        .takeIf { it.isNotBlank() }
-        ?.let { "$it min" }
-        ?: "时间未填"
-
+private fun cureConditionText(temperature: String, time: String): String {
+    val temperatureText = temperature.takeIf(String::isNotBlank)?.let { "$it℃" } ?: "温度未填"
+    val timeText = time.takeIf(String::isNotBlank)?.let { "$it min" } ?: "时间未填"
     return "$temperatureText × $timeText"
 }
 
 @Composable
-private fun SpecificationGroupCard(
-    group: PartSpecificationGroup,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    var expanded by remember(group.id) {
-        mutableStateOf(false)
-    }
-
-    Card(
+private fun PrimaryHardnessBlock(entry: InspectionEntry) {
+    val primary = entry.effectiveHardness
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme
-                .colorScheme
-                .surfaceContainerHigh,
-        ),
+        shape = RoundedCornerShape(14.dp),
+        color = when (primary?.source) {
+            HardnessSource.BLOCK_STANDARD -> MaterialTheme.colorScheme.primaryContainer
+            HardnessSource.PRODUCT_STANDARD -> MaterialTheme.colorScheme.tertiaryContainer
+            HardnessSource.TEST_PIECE -> MaterialTheme.colorScheme.secondaryContainer
+            null -> MaterialTheme.colorScheme.surfaceContainerLow
+        },
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme
-                    .colorScheme
-                    .secondaryContainer,
-                contentColor = MaterialTheme
-                    .colorScheme
-                    .onSecondaryContainer,
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement =
-                        Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = "送样部品",
-                        style = MaterialTheme
-                            .typography
-                            .labelMedium,
-                    )
-                    Text(
-                        text = group.partNumbers.joinToString(" · "),
-                        style = MaterialTheme
-                            .typography
-                            .titleLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
-
-            Column(
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                Text(
-                    text = "检测标准号",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme
-                        .colorScheme
-                        .onSurfaceVariant,
-                )
-                Text(
-                    text = group.standardNumber.ifBlank {
-                        "未填写标准号"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme
-                        .colorScheme
-                        .onSurfaceVariant,
-                )
-            }
-
-            RecommendedHardnessBlock(group = group)
-
-            if (expanded) {
-                HorizontalDivider()
-
-                HardnessDetailRow(
-                    label = "试片硬度",
-                    value = group.hardness.testPieceHardness,
-                    supporting = "仅作参考，不自动作为送样硬度",
-                )
-                HardnessDetailRow(
-                    label = "硬度块硬度",
-                    value = group.hardness.blockHardness,
-                    supporting = "送样第一优先级",
-                )
-                HardnessDetailRow(
-                    label = "产品硬度",
-                    value = group.hardness.productHardness,
-                    supporting = "硬度块硬度为空时使用",
-                )
-
-                OptionalDetailRow(
-                    label = "产品类别",
-                    value = group.productCategory,
-                )
-                OptionalDetailRow(
-                    label = "颜色",
-                    value = group.color,
-                )
-                OptionalDetailRow(
-                    label = "拉伸强度",
-                    value = group.tensileStrength,
-                )
-                OptionalDetailRow(
-                    label = "伸长率",
-                    value = group.elongation,
-                )
-                OptionalDetailRow(
-                    label = "备注",
-                    value = group.notes,
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(
-                    onClick = {
-                        expanded = !expanded
-                    },
-                ) {
-                    Text(
-                        if (expanded) {
-                            "收起资料"
-                        } else {
-                            "详细资料"
-                        },
-                    )
-                }
-
-                TextButton(onClick = onEdit) {
-                    Text("编辑")
-                }
-
-                TextButton(onClick = onDelete) {
-                    Text(
-                        text = "删除",
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("主要有效硬度", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            PrimaryHardnessDisplay(primary, compact = false)
         }
     }
 }
@@ -1347,226 +1093,59 @@ private fun HardnessValueDisplay(
     accent: Boolean = false,
 ) {
     val parsed = remember(value) { parseHardness(value) }
-    val mainStyle = if (compact) {
-        MaterialTheme.typography.titleMedium
-    } else {
-        MaterialTheme.typography.headlineMedium
-    }
-    val valueColor = if (accent) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.onSurface
-    }
-
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
+    val mainStyle = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineMedium
+    val valueColor = if (accent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
         when (parsed) {
             is ParsedHardness.Tolerance -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = parsed.nominal,
-                        style = mainStyle,
-                        color = valueColor,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Column(
-                        modifier = Modifier.padding(start = 3.dp),
-                        horizontalAlignment = Alignment.Start,
-                    ) {
+                    Text(parsed.nominal, style = mainStyle, color = valueColor, fontWeight = FontWeight.Bold)
+                    Column(modifier = Modifier.padding(start = 3.dp)) {
                         Text(
-                            text = "+${parsed.upperDeviation}",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 9.sp,
-                                lineHeight = 10.sp,
-                            ),
+                            "+${parsed.upperDeviation}",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, lineHeight = 10.sp),
                             color = valueColor,
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            text = "−${parsed.lowerDeviation}",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 9.sp,
-                                lineHeight = 10.sp,
-                            ),
+                            "−${parsed.lowerDeviation}",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, lineHeight = 10.sp),
                             color = valueColor,
                             fontWeight = FontWeight.SemiBold,
                         )
                     }
-                    Text(
-                        text = " A",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = valueColor,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    Text(" A", style = MaterialTheme.typography.labelLarge, color = valueColor, fontWeight = FontWeight.SemiBold)
                 }
                 if (showCalculatedRange) {
-                    Text(
-                        text = "允许范围 ${parsed.lowerLimit} — ${parsed.upperLimit} A",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    Text("允许范围 ${parsed.lowerLimit} — ${parsed.upperLimit} A", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-
             is ParsedHardness.Range -> {
-                Text(
-                    text = "${parsed.lower} — ${parsed.upper} A",
-                    style = mainStyle,
-                    color = valueColor,
-                    fontWeight = FontWeight.Bold,
-                )
-                if (showCalculatedRange) {
-                    Text(
-                        text = "下限 ${parsed.lower} · 上限 ${parsed.upper}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text("${parsed.lower} — ${parsed.upper} A", style = mainStyle, color = valueColor, fontWeight = FontWeight.Bold)
+                if (showCalculatedRange) Text("下限 ${parsed.lower} · 上限 ${parsed.upper}", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-
             is ParsedHardness.Minimum -> {
-                Text(
-                    text = "${if (parsed.inclusive) "≥" else ">"} ${parsed.value} A",
-                    style = mainStyle,
-                    color = valueColor,
-                    fontWeight = FontWeight.Bold,
-                )
-                if (showCalculatedRange) {
-                    Text(
-                        text = "最低要求",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text("${if (parsed.inclusive) "≥" else ">"} ${parsed.value} A", style = mainStyle, color = valueColor, fontWeight = FontWeight.Bold)
+                if (showCalculatedRange) Text("最低要求", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-
             is ParsedHardness.Maximum -> {
-                Text(
-                    text = "${if (parsed.inclusive) "≤" else "<"} ${parsed.value} A",
-                    style = mainStyle,
-                    color = valueColor,
-                    fontWeight = FontWeight.Bold,
-                )
-                if (showCalculatedRange) {
-                    Text(
-                        text = "最高允许",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text("${if (parsed.inclusive) "≤" else "<"} ${parsed.value} A", style = mainStyle, color = valueColor, fontWeight = FontWeight.Bold)
+                if (showCalculatedRange) Text("最高允许", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-
-            is ParsedHardness.Exact -> {
-                Text(
-                    text = "${parsed.value} A",
-                    style = mainStyle,
-                    color = valueColor,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-
-            is ParsedHardness.Raw -> {
-                Text(
-                    text = parsed.raw.ifBlank { "—" },
-                    style = if (compact) {
-                        MaterialTheme.typography.bodyMedium
-                    } else {
-                        MaterialTheme.typography.titleLarge
-                    },
-                    color = valueColor,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RecommendedHardnessBlock(
-    group: PartSpecificationGroup,
-) {
-    val recommendation = group.recommendation
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        color = when (recommendation?.source) {
-            HardnessSource.BLOCK_STANDARD -> {
-                MaterialTheme.colorScheme.primaryContainer
-            }
-
-            HardnessSource.PRODUCT_STANDARD -> {
-                MaterialTheme.colorScheme.tertiaryContainer
-            }
-
-            null -> {
-                MaterialTheme.colorScheme.surfaceContainerLow
-            }
-        },
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = "推荐送样硬度",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme
-                    .colorScheme
-                    .onSurfaceVariant,
-            )
-
-            if (recommendation == null) {
-                Text(
-                    text = "未配置送样硬度",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-            } else {
-                HardnessValueDisplay(
-                    value = recommendation.value,
-                    showCalculatedRange = true,
-                    accent = true,
-                )
-            }
-
-            Text(
-                text = when (recommendation?.source) {
-                    HardnessSource.BLOCK_STANDARD -> {
-                        "依据：硬度块标准"
-                    }
-
-                    HardnessSource.PRODUCT_STANDARD -> {
-                        "依据：产品硬度代用"
-                    }
-
-                    null -> {
-                        group.hardness.testPieceHardness
-                            .takeIf { it.isNotBlank() }
-                            ?.let {
-                                "仅有试片硬度 $it，不建议直接用于送样"
-                            }
-                            ?: "硬度块硬度与产品硬度均为空"
-                    }
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme
-                    .colorScheme
-                    .onSurfaceVariant,
+            is ParsedHardness.Exact -> Text("${parsed.value} A", style = mainStyle, color = valueColor, fontWeight = FontWeight.Bold)
+            is ParsedHardness.Raw -> Text(
+                parsed.raw.ifBlank { "—" },
+                style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleLarge,
+                color = valueColor,
+                fontWeight = FontWeight.SemiBold,
             )
         }
     }
 }
 
 @Composable
-private fun HardnessDetailRow(
-    label: String,
-    value: String,
-    supporting: String,
-) {
+private fun OptionalDetailRow(label: String, value: String) {
+    if (value.isBlank()) return
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1575,131 +1154,22 @@ private fun HardnessDetailRow(
         Text(
             text = label,
             modifier = Modifier.width(88.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme
-                .colorScheme
-                .onSurfaceVariant,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            if (value.isBlank()) {
-                Text(
-                    text = "—",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            } else {
-                HardnessValueDisplay(
-                    value = value,
-                    compact = true,
-                )
-            }
-            Text(
-                text = supporting,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme
-                    .colorScheme
-                    .onSurfaceVariant,
-            )
-        }
+        Text(text = value, modifier = Modifier.weight(1f))
     }
 }
 
 @Composable
-private fun OptionalDetailRow(
-    label: String,
-    value: String,
-) {
-    if (value.isBlank()) {
-        return
-    }
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.width(88.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme
-                .colorScheme
-                .onSurfaceVariant,
-        )
-        Text(
-            text = value,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
-}
-
-@Composable
-private fun RecommendationChip(
-    recommendation: HardnessRecommendation,
-) {
-    Surface(
-        shape = CircleShape,
-        color = when (recommendation.source) {
-            HardnessSource.BLOCK_STANDARD -> {
-                MaterialTheme.colorScheme.primaryContainer
-            }
-
-            HardnessSource.PRODUCT_STANDARD -> {
-                MaterialTheme.colorScheme.tertiaryContainer
-            }
-        },
-        contentColor = when (recommendation.source) {
-            HardnessSource.BLOCK_STANDARD -> {
-                MaterialTheme.colorScheme.onPrimaryContainer
-            }
-
-            HardnessSource.PRODUCT_STANDARD -> {
-                MaterialTheme.colorScheme.onTertiaryContainer
-            }
-        },
-    ) {
-        HardnessValueDisplay(
-            value = recommendation.value,
-            modifier = Modifier.padding(
-                horizontal = 12.dp,
-                vertical = 7.dp,
-            ),
-            compact = true,
-            accent = true,
-        )
-    }
-}
-
-@Composable
-private fun DetailValueCard(
-    label: String,
-    value: String,
-) {
+private fun DetailValueCard(label: String, value: String) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme
-            .colorScheme
-            .surfaceContainerLow,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodyMedium,
-            )
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(value)
         }
     }
 }
@@ -1712,190 +1182,90 @@ internal fun CompoundEditorDialog(
     onDismiss: () -> Unit,
     onSave: (CompoundFormData) -> Unit,
 ) {
-    var compoundCode by remember(initial?.id) {
-        mutableStateOf(initial?.compoundCode.orEmpty())
-    }
-    var temperature by remember(initial?.id) {
-        mutableStateOf(
-            initial?.testPieceCureTemperatureC.orEmpty(),
-        )
-    }
-    var testPieceTime by remember(initial?.id) {
-        mutableStateOf(
-            initial?.testPieceCureTimeMinutes.orEmpty(),
-        )
-    }
-    var customBlockTime by remember(initial?.id) {
-        mutableStateOf(
-            initial?.customBlockCureTimeMinutes.orEmpty(),
-        )
-    }
-    var notes by remember(initial?.id) {
-        mutableStateOf(initial?.notes.orEmpty())
-    }
+    var compoundCode by remember(initial?.id) { mutableStateOf(initial?.compoundCode.orEmpty()) }
+    var temperature by remember(initial?.id) { mutableStateOf(initial?.testPieceCureTemperatureC.orEmpty()) }
+    var testPieceTime by remember(initial?.id) { mutableStateOf(initial?.testPieceCureTimeMinutes.orEmpty()) }
+    var customBlockTime by remember(initial?.id) { mutableStateOf(initial?.customBlockCureTimeMinutes.orEmpty()) }
+    var notes by remember(initial?.id) { mutableStateOf(initial?.notes.orEmpty()) }
 
-    val normalizedCode = compoundCode
-        .trim()
-        .uppercase(Locale.ROOT)
-    val duplicateCode = normalizedCode.isNotEmpty() &&
-        hasDuplicateCompoundCode(
-            compounds = compounds,
-            compoundCode = normalizedCode,
-            excludingId = initial?.id,
-        )
+    val normalizedCode = compoundCode.trim().uppercase(Locale.ROOT)
+    val duplicateCode = hasDuplicateCompoundCode(compounds, normalizedCode, initial?.id)
     val canSave = normalizedCode.isNotEmpty() && !duplicateCode
 
     FullScreenEditorDialog(
-        title = if (initial == null) {
-            "添加胶料"
-        } else {
-            "编辑胶料"
-        },
+        title = if (initial == null) "添加胶料" else "编辑胶料",
         canSave = canSave,
         onDismiss = onDismiss,
         onSave = {
             onSave(
                 CompoundFormData(
                     compoundCode = normalizedCode,
-                    testPieceCureTemperatureC =
-                        temperature.trim(),
-                    testPieceCureTimeMinutes =
-                        testPieceTime.trim(),
-                    customBlockCureTimeMinutes =
-                        customBlockTime.trim(),
+                    testPieceCureTemperatureC = temperature.trim(),
+                    testPieceCureTimeMinutes = testPieceTime.trim(),
+                    customBlockCureTimeMinutes = customBlockTime.trim(),
                     notes = notes.trim(),
                 ),
             )
         },
     ) { contentPadding ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(contentPadding),
-            contentPadding = PaddingValues(
-                start = 20.dp,
-                top = 16.dp,
-                end = 20.dp,
-                bottom = 32.dp,
-            ),
+            modifier = Modifier.fillMaxSize().padding(contentPadding),
+            contentPadding = PaddingValues(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            item {
-                EditorSectionTitle(
-                    title = "基本信息",
-                    description = "胶料号是手册的第一层级",
-                )
-            }
-
+            item { EditorSectionTitle("基本信息", "胶料号是手册的第一层级") }
             item {
                 OutlinedTextField(
                     value = compoundCode,
-                    onValueChange = {
-                        compoundCode = it
-                    },
+                    onValueChange = { compoundCode = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("胶料号 *") },
-                    placeholder = {
-                        Text("例如：P01331201")
-                    },
-                    supportingText = {
-                        if (duplicateCode) {
-                            Text("该胶料号已存在，请编辑原记录")
-                        }
-                    },
+                    placeholder = { Text("例如：P01331201") },
+                    supportingText = { if (duplicateCode) Text("该胶料号已存在，请编辑原记录") },
                     isError = duplicateCode,
                     singleLine = true,
                 )
             }
-
-            item {
-                EditorSectionTitle(
-                    title = "试片硫化条件",
-                    description =
-                        "硬度块时间默认按试片时间的双倍计算",
-                )
-            }
-
+            item { EditorSectionTitle("试片硫化条件", "硬度块时间默认按试片时间的双倍计算") }
             item {
                 OutlinedTextField(
                     value = temperature,
-                    onValueChange = {
-                        temperature = sanitizeDecimalInput(it)
-                    },
+                    onValueChange = { temperature = sanitizeDecimalInput(it) },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("硫化温度（℃）") },
                     placeholder = { Text("例如：180") },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Decimal,
-                    ),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                 )
             }
-
             item {
                 OutlinedTextField(
                     value = testPieceTime,
-                    onValueChange = {
-                        testPieceTime = sanitizeDecimalInput(it)
-                    },
+                    onValueChange = { testPieceTime = sanitizeDecimalInput(it) },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("试片硫化时间（min）") },
                     placeholder = { Text("例如：9") },
                     supportingText = {
-                        val calculated = testPieceTime
-                            .toDoubleOrNull()
-                            ?.times(2)
-                            ?.let(::compactEditorNumber)
-
-                        if (
-                            calculated != null &&
-                            customBlockTime.isBlank()
-                        ) {
-                            Text(
-                                "硬度块时间将自动计算为 $calculated min",
-                            )
-                        }
+                        val calculated = testPieceTime.toDoubleOrNull()?.times(2)?.let(::compactEditorNumber)
+                        if (calculated != null && customBlockTime.isBlank()) Text("硬度块时间将自动计算为 $calculated min")
                     },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Decimal,
-                    ),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                 )
             }
-
             item {
                 OutlinedTextField(
                     value = customBlockTime,
-                    onValueChange = {
-                        customBlockTime =
-                            sanitizeDecimalInput(it)
-                    },
+                    onValueChange = { customBlockTime = sanitizeDecimalInput(it) },
                     modifier = Modifier.fillMaxWidth(),
-                    label = {
-                        Text("硬度块自定义时间（可选）")
-                    },
-                    placeholder = {
-                        Text("留空则自动使用试片时间 ×2")
-                    },
-                    supportingText = {
-                        Text(
-                            "仅在个别胶料不按双倍时间时填写",
-                        )
-                    },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Decimal,
-                    ),
+                    label = { Text("硬度块自定义时间（可选）") },
+                    placeholder = { Text("留空则自动使用试片时间 ×2") },
+                    supportingText = { Text("仅在个别胶料不按双倍时间时填写") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                 )
             }
-
-            item {
-                EditorSectionTitle(
-                    title = "备注",
-                    description = "用于记录胶料层面的补充信息",
-                )
-            }
-
+            item { EditorSectionTitle("备注", "用于记录胶料层面的补充信息") }
             item {
                 OutlinedTextField(
                     value = notes,
@@ -1912,76 +1282,47 @@ internal fun CompoundEditorDialog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun GroupEditorDialog(
+internal fun InspectionEditorDialog(
     compound: RubberCompound,
-    initial: PartSpecificationGroup?,
+    entries: List<InspectionEntry>,
+    initial: InspectionEntry?,
     onDismiss: () -> Unit,
-    onSave: (GroupFormData) -> Unit,
+    onSave: (InspectionFormData) -> Unit,
 ) {
-    var standardNumber by remember(initial?.id) {
-        mutableStateOf(initial?.standardNumber.orEmpty())
-    }
+    var standardNumber by remember(initial?.id) { mutableStateOf(initial?.standardNumber.orEmpty()) }
     var partNumbersText by remember(initial?.id) {
-        mutableStateOf(
-            initial?.partNumbers?.joinToString("\n").orEmpty(),
-        )
+        mutableStateOf(initial?.partNumbers?.joinToString("\n").orEmpty())
     }
-    var testPieceHardness by remember(initial?.id) {
-        mutableStateOf(
-            initial?.hardness?.testPieceHardness.orEmpty(),
-        )
-    }
-    var blockHardness by remember(initial?.id) {
-        mutableStateOf(
-            initial?.hardness?.blockHardness.orEmpty(),
-        )
-    }
-    var productHardness by remember(initial?.id) {
-        mutableStateOf(
-            initial?.hardness?.productHardness.orEmpty(),
-        )
-    }
-    var productCategory by remember(initial?.id) {
-        mutableStateOf(initial?.productCategory.orEmpty())
-    }
-    var color by remember(initial?.id) {
-        mutableStateOf(initial?.color.orEmpty())
-    }
-    var tensileStrength by remember(initial?.id) {
-        mutableStateOf(initial?.tensileStrength.orEmpty())
-    }
-    var elongation by remember(initial?.id) {
-        mutableStateOf(initial?.elongation.orEmpty())
-    }
-    var notes by remember(initial?.id) {
-        mutableStateOf(initial?.notes.orEmpty())
-    }
-    var showPartConflictConfirmation by remember(initial?.id) {
-        mutableStateOf(false)
-    }
+    var testPieceHardness by remember(initial?.id) { mutableStateOf(initial?.hardness?.testPieceHardness.orEmpty()) }
+    var blockHardness by remember(initial?.id) { mutableStateOf(initial?.hardness?.blockHardness.orEmpty()) }
+    var productHardness by remember(initial?.id) { mutableStateOf(initial?.hardness?.productHardness.orEmpty()) }
+    var productCategory by remember(initial?.id) { mutableStateOf(initial?.productCategory.orEmpty()) }
+    var color by remember(initial?.id) { mutableStateOf(initial?.color.orEmpty()) }
+    var tensileStrength by remember(initial?.id) { mutableStateOf(initial?.tensileStrength.orEmpty()) }
+    var elongation by remember(initial?.id) { mutableStateOf(initial?.elongation.orEmpty()) }
+    var notes by remember(initial?.id) { mutableStateOf(initial?.notes.orEmpty()) }
 
-    val normalizedStandardNumber = standardNumber
-        .trim()
-        .uppercase(Locale.ROOT)
+    val normalizedStandardNumber = standardNumber.trim()
     val parsedPartNumbers = parsePartNumbers(partNumbersText)
-    val duplicateStandard = normalizedStandardNumber.isNotEmpty() &&
-        hasDuplicateStandardNumber(
-            compound = compound,
-            standardNumber = normalizedStandardNumber,
-            excludingGroupId = initial?.id,
-        )
-    val partNumberConflicts = findPartNumberConflicts(
-        compound = compound,
-        partNumbers = parsedPartNumbers,
-        excludingGroupId = initial?.id,
+    val duplicateStandard = hasDuplicateStandardNumber(
+        entries = entries,
+        compoundId = compound.id,
+        standardNumber = normalizedStandardNumber,
+        excludingEntryId = initial?.id,
     )
-    val canSave = normalizedStandardNumber.isNotEmpty() &&
-        parsedPartNumbers.isNotEmpty() &&
-        !duplicateStandard
+    val partNumberConflicts = findPartNumberConflicts(
+        entries = entries,
+        compoundId = compound.id,
+        partNumbers = parsedPartNumbers,
+        excludingEntryId = initial?.id,
+    )
+    val canSave = parsedPartNumbers.isNotEmpty() &&
+        !duplicateStandard &&
+        partNumberConflicts.isEmpty()
 
     fun submitForm() {
         onSave(
-            GroupFormData(
+            InspectionFormData(
                 standardNumber = normalizedStandardNumber,
                 partNumbers = parsedPartNumbers,
                 hardness = HardnessSet(
@@ -1999,99 +1340,51 @@ internal fun GroupEditorDialog(
     }
 
     FullScreenEditorDialog(
-        title = if (initial == null) {
-            "添加检测标准组"
-        } else {
-            "编辑检测标准组"
-        },
+        title = if (initial == null) "添加检测标准" else "编辑检测标准",
         subtitle = compound.compoundCode,
         canSave = canSave,
         onDismiss = onDismiss,
-        onSave = {
-            if (partNumberConflicts.isEmpty()) {
-                submitForm()
-            } else {
-                showPartConflictConfirmation = true
-            }
-        },
+        onSave = { submitForm() },
     ) { contentPadding ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(contentPadding),
-            contentPadding = PaddingValues(
-                start = 20.dp,
-                top = 16.dp,
-                end = 20.dp,
-                bottom = 32.dp,
-            ),
+            modifier = Modifier.fillMaxSize().padding(contentPadding),
+            contentPadding = PaddingValues(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            item {
-                EditorSectionTitle(
-                    title = "检测标准",
-                    description =
-                        "部品号面向客户展示，标准号用于内部区分检测要求",
-                )
-            }
-
+            item { EditorSectionTitle("检测标准", "部品号面向客户展示，标准号用于区分检测要求（可选）") }
             item {
                 OutlinedTextField(
                     value = standardNumber,
-                    onValueChange = {
-                        standardNumber = it
-                    },
+                    onValueChange = { standardNumber = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("检测标准号 *") },
-                    placeholder = {
-                        Text("例如：B2-12-1078/A")
-                    },
+                    label = { Text("检测标准号") },
+                    placeholder = { Text("例如：B2-12-1078/A") },
                     supportingText = {
-                        Text(
-                            if (duplicateStandard) {
-                                "该检测标准号已存在，请编辑原记录"
-                            } else {
-                                "标准号作为内部参考，不会突出显示"
-                            },
-                        )
+                        Text(if (duplicateStandard) "该检测标准号已存在，请编辑原记录" else "标准号为空时仍可保存，部品号必须填写")
                     },
                     isError = duplicateStandard,
                     singleLine = true,
                 )
             }
-
-            item {
-                EditorSectionTitle(
-                    title = "适用部品",
-                    description =
-                        "执行同一检测标准的多个部品号可放在同一组",
-                )
-            }
-
+            item { EditorSectionTitle("适用部品", "执行同一检测标准的多个部品号可放在同一条记录") }
             item {
                 OutlinedTextField(
                     value = partNumbersText,
-                    onValueChange = {
-                        partNumbersText = it
-                    },
+                    onValueChange = { partNumbersText = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("部品号 *") },
-                    placeholder = {
-                        Text(
-                            "每行一个完整部品号\n例如：\n3DE000023A\n3DE000023C",
-                        )
-                    },
+                    placeholder = { Text("每行一个完整部品号\n例如：\n3DE000023A\n3DE000023C") },
                     supportingText = {
                         Text(
                             text = if (partNumberConflicts.isEmpty()) {
-                                "也支持使用逗号、分号或空格分隔；请填写完整部品号"
+                                "也支持使用逗号、分号或空格分隔；保存时会去重并排序"
                             } else {
-                                "${partNumberConflicts.size} 个部品号已用于其他标准，保存时需要确认"
+                                "${partNumberConflicts.size} 个部品号已用于同一胶料的其他标准，请修改后保存"
                             },
                             color = if (partNumberConflicts.isEmpty()) {
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             } else {
-                                MaterialTheme.colorScheme.tertiary
+                                MaterialTheme.colorScheme.error
                             },
                         )
                     },
@@ -2099,92 +1392,48 @@ internal fun GroupEditorDialog(
                     maxLines = 7,
                 )
             }
-
-            item {
-                EditorSectionTitle(
-                    title = "硬度标准",
-                    description =
-                        "优先使用硬度块硬度；为空时使用产品硬度",
-                )
-            }
-
+            item { EditorSectionTitle("硬度标准", "主要有效硬度优先使用硬度块，其次产品，最后试片") }
             item {
                 OutlinedTextField(
                     value = testPieceHardness,
-                    onValueChange = {
-                        testPieceHardness = it
-                    },
+                    onValueChange = { testPieceHardness = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("试片硬度") },
-                    placeholder = {
-                        Text("例如：33 +2/-2 A")
-                    },
-                    supportingText = {
-                        Text("仅作参考，不用于自动推荐送样硬度")
-                    },
+                    placeholder = { Text("例如：33 +2/-2 A") },
                     singleLine = true,
                 )
             }
-
             item {
                 OutlinedTextField(
                     value = blockHardness,
-                    onValueChange = {
-                        blockHardness = it
-                    },
+                    onValueChange = { blockHardness = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("硬度块硬度") },
-                    placeholder = {
-                        Text("例如：34 +3/-3 A")
-                    },
-                    supportingText = {
-                        Text("送样硬度的第一优先级")
-                    },
+                    placeholder = { Text("例如：34 +3/-3 A") },
                     singleLine = true,
                 )
             }
-
             item {
                 OutlinedTextField(
                     value = productHardness,
-                    onValueChange = {
-                        productHardness = it
-                    },
+                    onValueChange = { productHardness = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("产品硬度") },
-                    placeholder = {
-                        Text("例如：35 +3/-3 A")
-                    },
-                    supportingText = {
-                        Text("硬度块硬度为空时作为送样依据")
-                    },
+                    placeholder = { Text("例如：35 +3/-3 A") },
                     singleLine = true,
                 )
             }
-
-            item {
-                EditorSectionTitle(
-                    title = "低频资料",
-                    description =
-                        "这些信息默认折叠，需要时再查看",
-                )
-            }
-
+            item { EditorSectionTitle("低频资料", "这些信息在首页详细视图中显示") }
             item {
                 OutlinedTextField(
                     value = productCategory,
-                    onValueChange = {
-                        productCategory = it
-                    },
+                    onValueChange = { productCategory = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("产品类别") },
-                    placeholder = {
-                        Text("例如：橡胶避振脚")
-                    },
+                    placeholder = { Text("例如：橡胶避振脚") },
                     singleLine = true,
                 )
             }
-
             item {
                 OutlinedTextField(
                     value = color,
@@ -2195,95 +1444,38 @@ internal fun GroupEditorDialog(
                     singleLine = true,
                 )
             }
-
             item {
                 OutlinedTextField(
                     value = tensileStrength,
-                    onValueChange = {
-                        tensileStrength = it
-                    },
+                    onValueChange = { tensileStrength = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("拉伸强度") },
-                    placeholder = {
-                        Text("例如：标准 ≥11.76 MPa；快检 ≥9 MPa")
-                    },
+                    placeholder = { Text("例如：标准 ≥11.76 MPa；快检 ≥9 MPa") },
                     minLines = 2,
                     maxLines = 4,
                 )
             }
-
             item {
                 OutlinedTextField(
                     value = elongation,
-                    onValueChange = {
-                        elongation = it
-                    },
+                    onValueChange = { elongation = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("伸长率") },
                     placeholder = { Text("例如：≥400%") },
                     singleLine = true,
                 )
             }
-
             item {
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("备注") },
+                    label = { Text("检测标准备注") },
                     minLines = 3,
                     maxLines = 6,
                 )
             }
         }
-    }
-
-    if (showPartConflictConfirmation) {
-        val visibleConflicts = partNumberConflicts.entries.take(6)
-        val hiddenCount = partNumberConflicts.size - visibleConflicts.size
-
-        AlertDialog(
-            onDismissRequest = {
-                showPartConflictConfirmation = false
-            },
-            title = { Text("部品号已用于其他标准") },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("以下部品号已出现在其他检测标准中：")
-                    visibleConflicts.forEach { (partNumber, standards) ->
-                        Text(
-                            text = "$partNumber：${standards.joinToString("、")}",
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                    if (hiddenCount > 0) {
-                        Text("另有 $hiddenCount 个冲突部品号未显示")
-                    }
-                    Text("一个部品可能确实适用多个标准，请确认后再保存。")
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showPartConflictConfirmation = false
-                        submitForm()
-                    },
-                ) {
-                    Text("仍然保存")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        showPartConflictConfirmation = false
-                    },
-                ) {
-                    Text("返回检查")
-                }
-            },
-        )
     }
 }
 
@@ -2299,153 +1491,104 @@ private fun FullScreenEditorDialog(
 ) {
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-        ),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .systemBarsPadding()
-                .imePadding(),
-            color = if (isSystemInDarkTheme()) {
-                MaterialTheme.colorScheme.surface
-            } else {
-                MaterialTheme.colorScheme.surface
-            },
+            modifier = Modifier.fillMaxSize().systemBarsPadding().imePadding(),
+            color = MaterialTheme.colorScheme.surface,
         ) {
             Scaffold(
                 topBar = {
                     CenterAlignedTopAppBar(
                         title = {
-                            Column(
-                                horizontalAlignment =
-                                    Alignment.CenterHorizontally,
-                            ) {
-                                Text(
-                                    text = title,
-                                    fontWeight =
-                                        FontWeight.SemiBold,
-                                )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(title, fontWeight = FontWeight.SemiBold)
                                 if (subtitle.isNotBlank()) {
                                     Text(
-                                        text = subtitle,
-                                        style = MaterialTheme
-                                            .typography
-                                            .labelMedium,
-                                        color = MaterialTheme
-                                            .colorScheme
-                                            .onSurfaceVariant,
+                                        subtitle,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
                             }
                         },
-                        navigationIcon = {
-                            TextButton(onClick = onDismiss) {
-                                Text("取消")
-                            }
-                        },
+                        navigationIcon = { TextButton(onClick = onDismiss) { Text("取消") } },
                         actions = {
-                            TextButton(
-                                onClick = onSave,
-                                enabled = canSave,
-                            ) {
-                                Text("保存")
-                            }
+                            TextButton(onClick = onSave, enabled = canSave) { Text("保存") }
                         },
                     )
                 },
-            ) { innerPadding ->
-                content(innerPadding)
-            }
+            ) { innerPadding -> content(innerPadding) }
         }
     }
 }
 
 @Composable
-private fun EditorSectionTitle(
-    title: String,
-    description: String,
-) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            text = description,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme
-                .colorScheme
-                .onSurfaceVariant,
-        )
+private fun EditorSectionTitle(title: String, description: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
-internal fun DeleteStandardGroupDialog(
-    group: PartSpecificationGroup,
+internal fun DeleteInspectionDialog(
+    entry: InspectionEntry,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val title = entry.standardNumber.ifBlank { entry.partNumbers.joinToString("、") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("删除检测标准？") },
+        text = { Text("将删除标准“$title”及其 ${entry.partNumbers.size} 个部品关联。此操作会立即保存。") },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("删除", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
+}
+
+@Composable
+internal fun DeleteCompoundDialog(
+    compound: RubberCompound,
+    entryCount: Int,
+    partCount: Int,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("删除检测标准组？") },
+        title = { Text("删除胶料？") },
         text = {
             Text(
-                "将删除标准 ${group.standardNumber.ifBlank { "（未填写标准号）" }}，适用部品：${group.partNumbers.joinToString("、")}。此操作会立即保存。",
+                "删除胶料“${compound.compoundCode}”将同时删除 $entryCount 个检测标准和 $partCount 个部品关联。此操作会立即保存。",
             )
         },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text(
-                    text = "删除",
-                    color = MaterialTheme.colorScheme.error,
-                )
+                Text("删除", color = MaterialTheme.colorScheme.error)
             }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
-        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
 }
 
 @Composable
-private fun CompoundGlyph(
-    modifier: Modifier = Modifier,
-) {
-    val iconColor = MaterialTheme
-        .colorScheme
-        .onPrimaryContainer
-
+private fun CompoundGlyph(modifier: Modifier = Modifier) {
+    val iconColor = MaterialTheme.colorScheme.onPrimaryContainer
     Canvas(modifier = modifier) {
         val lineStartX = 4.dp.toPx()
         val lineEndX = size.width - 4.dp.toPx()
         val strokeWidth = 2.2.dp.toPx()
-        val rowYs = floatArrayOf(
-            5.dp.toPx(),
-            size.height / 2f,
-            size.height - 5.dp.toPx(),
-        )
-
+        val rowYs = floatArrayOf(5.dp.toPx(), size.height / 2f, size.height - 5.dp.toPx())
         rowYs.forEachIndexed { index, y ->
             drawLine(
                 color = iconColor,
-                start = Offset(
-                    x = lineStartX +
-                        (index * 2).dp.toPx(),
-                    y = y,
-                ),
-                end = Offset(
-                    x = lineEndX -
-                        (index * 2).dp.toPx(),
-                    y = y,
-                ),
+                start = Offset(lineStartX + (index * 2).dp.toPx(), y),
+                end = Offset(lineEndX - (index * 2).dp.toPx(), y),
                 strokeWidth = strokeWidth,
                 cap = StrokeCap.Round,
             )
@@ -2453,48 +1596,27 @@ private fun CompoundGlyph(
     }
 }
 
-private fun parsePartNumbers(
-    rawValue: String,
-): List<String> =
-    rawValue
-        .split(
-            Regex("[\\s,，;；]+"),
-        )
-        .map { it.trim().uppercase(Locale.ROOT) }
-        .filter { it.isNotEmpty() }
-        .distinct()
+private fun parsePartNumbers(rawValue: String): List<String> = normalizePartNumbers(
+    rawValue.split(Regex("[\\s,，;；]+")),
+)
 
-private fun sanitizeDecimalInput(
-    rawValue: String,
-): String {
+private fun sanitizeDecimalInput(rawValue: String): String {
     val normalized = rawValue.replace(',', '.')
     val builder = StringBuilder()
     var hasDecimalPoint = false
-
     normalized.forEach { character ->
         when {
-            character.isDigit() -> {
-                builder.append(character)
-            }
-
+            character.isDigit() -> builder.append(character)
             character == '.' && !hasDecimalPoint -> {
                 hasDecimalPoint = true
                 builder.append(character)
             }
         }
     }
-
     return builder.toString()
 }
 
-private fun compactEditorNumber(
-    value: Double,
-): String {
+private fun compactEditorNumber(value: Double): String {
     val asLong = value.toLong()
-
-    return if (value == asLong.toDouble()) {
-        asLong.toString()
-    } else {
-        value.toString()
-    }
+    return if (value == asLong.toDouble()) asLong.toString() else value.toString()
 }

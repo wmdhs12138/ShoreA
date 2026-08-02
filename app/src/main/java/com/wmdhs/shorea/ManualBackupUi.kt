@@ -15,15 +15,16 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun ManualBackupActionsDialog(
-    compounds: List<RubberCompound>,
+    manual: HardnessManual,
     onExportBackup: () -> Unit,
     onImportBackup: () -> Unit,
     onExportSpreadsheet: () -> Unit,
     onImportSpreadsheet: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val groupCount = compounds.sumOf { it.groups.size }
-    val partCount = compounds.sumOf { it.totalPartCount }
+    val compoundCount = manual.compounds.size
+    val entryCount = manual.inspectionEntries.size
+    val partCount = manual.totalPartAssociationCount
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -31,7 +32,7 @@ internal fun ManualBackupActionsDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "当前有 ${compounds.size} 个胶料 · $groupCount 个检测标准 · $partCount 个部品",
+                    text = "当前有 $compoundCount 个胶料 · $entryCount 个检测标准 · $partCount 个部品关联",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
@@ -44,14 +45,14 @@ internal fun ManualBackupActionsDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     TextButton(onClick = onImportSpreadsheet) { Text("导入 Excel") }
-                    TextButton(onClick = onExportSpreadsheet, enabled = compounds.isNotEmpty()) { Text("导出 Excel") }
+                    TextButton(onClick = onExportSpreadsheet, enabled = manual.compounds.isNotEmpty()) { Text("导出 Excel") }
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     TextButton(onClick = onImportBackup) { Text("导入备份") }
-                    TextButton(onClick = onExportBackup, enabled = compounds.isNotEmpty()) { Text("导出备份") }
+                    TextButton(onClick = onExportBackup, enabled = manual.compounds.isNotEmpty()) { Text("导出备份") }
                 }
             }
         },
@@ -82,9 +83,9 @@ internal fun ManualImportPreviewDialog(
                 )
                 BackupSummaryRow(
                     label = "资料数量",
-                    value = "${backup.compounds.size} 个胶料 · " +
-                        "${backup.groupCount} 个标准 · " +
-                        "${backup.partCount} 个部品",
+                    value = "${backup.compoundCount} 个胶料 · " +
+                        "${backup.entryCount} 个检测标准 · " +
+                        "${backup.partCount} 个部品关联",
                 )
                 Text(
                     text = "合并会保留现有资料，只添加缺少的胶料和标准；覆盖会完全替换当前手册。",
@@ -132,7 +133,7 @@ internal fun ManualSpreadsheetImportPreviewDialog(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 BackupSummaryRow(
                     label = "识别结果",
-                    value = "${spreadsheet.compounds.size} 个胶料 · ${spreadsheet.groupCount} 个标准 · ${spreadsheet.partCount} 个部品",
+                    value = "${spreadsheet.compoundCount} 个胶料 · ${spreadsheet.entryCount} 个检测标准 · ${spreadsheet.partCount} 个部品关联",
                 )
                 BackupSummaryRow(
                     label = "数据行",

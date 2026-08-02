@@ -112,3 +112,19 @@ private val rangePattern = Regex("^$number\\s*[-−–—~～至]\\s*$number$")
 private val minimumPattern = Regex("^(≥|>=|＞|>)\\s*$number$")
 private val maximumPattern = Regex("^(≤|<=|＜|<)\\s*$number$")
 private val exactPattern = Regex("^$number$")
+
+private val hardnessSortNumberPattern = Regex("""\d+(?:\.\d+)?""")
+
+internal fun extractHardnessSortValue(rawValue: String): Double? {
+    return when (val parsed = parseHardness(rawValue)) {
+        is ParsedHardness.Tolerance -> parsed.nominal.toDoubleOrNull()
+        is ParsedHardness.Range -> parsed.lower.toDoubleOrNull()
+        is ParsedHardness.Minimum -> parsed.value.toDoubleOrNull()
+        is ParsedHardness.Maximum -> parsed.value.toDoubleOrNull()
+        is ParsedHardness.Exact -> parsed.value.toDoubleOrNull()
+        is ParsedHardness.Raw -> hardnessSortNumberPattern
+            .find(parsed.raw)
+            ?.value
+            ?.toDoubleOrNull()
+    }
+}
