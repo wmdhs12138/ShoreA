@@ -6,6 +6,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.MaterialTheme
@@ -32,12 +38,14 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -84,7 +92,8 @@ private data class DeleteCompoundRequest(
 private fun HardnessManualHome() {
     val appContext = LocalContext.current.applicationContext
     val store = remember(appContext) { HardnessManualStore(appContext) }
-    var manual by remember { mutableStateOf(HardnessManual()) }
+    val manualState = remember { mutableStateOf(HardnessManual()) }
+    var manual by manualState
     var hasLoaded by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
@@ -112,8 +121,10 @@ private fun HardnessManualHome() {
     }
     var persistRevision by remember { mutableLongStateOf(0L) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-    val latestManual = rememberUpdatedState(manual)
+    var restoreFocusKey by remember { mutableStateOf<String?>(null) }
+    var revealedItemKey by remember { mutableStateOf<String?>(null) }
 
     fun showMessage(message: String) {
         coroutineScope.launch {
@@ -271,6 +282,20 @@ private fun HardnessManualHome() {
             order = sortOrder,
         )
     }
+
+    LaunchedEffect(restoreFocusKey, visibleHomeItems) {
+        val focusKey = restoreFocusKey ?: return@LaunchedEffect
+        val restoredIndex = visibleHomeItems.indexOfFirst { it.stableKey == focusKey }
+        if (restoredIndex >= 0) {
+            listState.animateScrollToItem(restoredIndex)
+            delay(1_200L)
+            if (restoreFocusKey == focusKey) restoreFocusKey = null
+        }
+    }
+
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) revealedItemKey = null
+    }
     val selectedCompound = selectedCompoundId?.let { id -> manual.findCompound(id) }
     val selectedEntries = selectedCompound?.let { compound ->
         manual.entriesForCompound(compound.id)
@@ -285,12 +310,12 @@ private fun HardnessManualHome() {
                 query = searchQuery,
                 sortOrder = sortOrder,
                 viewMode = viewMode,
-                onSearchActiveChange = { searchActive = it },
-                onQueryChange = { searchQuery = it },
-                onClearQuery = { searchQuery = "" },
-                onSortOrderChange = { sortOrder = it },
-                onViewModeChange = { viewMode = it },
-                onImportExport = { backupActionsVisible = true },
+                onSearchActiveChange = { revealedItemKey = null; searchActive = it },
+                onQueryChange = { revealedItemKey = null; searchQuery = it },
+                onClearQuery = { revealedItemKey = null; searchQuery = "" },
+                onSortOrderChange = { revealedItemKey = null; sortOrder = it },
+                onViewModeChange = { revealedItemKey = null; viewMode = it },
+                onImportExport = { revealedItemKey = null; backupActionsVisible = true },
             )
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
@@ -298,6 +323,7 @@ private fun HardnessManualHome() {
             if (hasLoaded && loadError == null) {
                 ExtendedFloatingActionButton(
                     onClick = {
+                        revealedItemKey = null
                         compoundEditorRequest = CompoundEditorRequest(existing = null)
                     },
                 ) {
@@ -319,7 +345,20 @@ private fun HardnessManualHome() {
                 query = normalizedQuery,
             )
             else -> LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                state = listState,
+                modifier = Modifier.fillMaxSize()
+                    .padding(innerPadding)
+                    .pointerInput(revealedItemKey) {
+                        if (revealedItemKey != null) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                do {
+                                    val event = awaitPointerEvent(PointerEventPass.Final)
+                                } while (event.changes.any { it.pressed })
+                                revealedItemKey = null
+                            }
+                        }
+                    },
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     top = 12.dp,
@@ -334,6 +373,15 @@ private fun HardnessManualHome() {
                 ) { item ->
                     SwipeManualHomeItem(
                         item = item,
+                        highlighted = restoreFocusKey == item.stableKey,
+                        revealed = revealedItemKey == item.stableKey,
+                        modifier = Modifier.animateItem(
+                            fadeInSpec = tween(durationMillis = 360),
+                            placementSpec = spring(
+                                stiffness = Spring.StiffnessMediumLow,
+                            ),
+                            fadeOutSpec = tween(durationMillis = 180),
+                        ),
                         searchQuery = normalizedQuery,
                         viewMode = viewMode,
                         onOpen = {
@@ -348,24 +396,28 @@ private fun HardnessManualHome() {
                                 }
                             }
                         },
+                        onReveal = { revealedItemKey = item.stableKey },
+                        onInteractionOutsideDelete = { revealedItemKey = null },
                         onDeleteInspection = { entry ->
                             deleteInspectionWithUndo(
                                 entry = entry,
-                                currentManual = { latestManual.value },
+                                currentManual = { manualState.value },
                                 persist = ::persist,
                                 showMessage = ::showMessage,
                                 snackbarHostState = snackbarHostState,
                                 coroutineScope = coroutineScope,
+                                onRestored = { restoreFocusKey = it },
                             )
                         },
                         onDeleteEmptyCompound = { compound ->
-                            deleteEmptyCompoundWithUndo(
+                            deleteCompoundWithUndo(
                                 compound = compound,
-                                currentManual = { latestManual.value },
+                                currentManual = { manualState.value },
                                 persist = ::persist,
                                 showMessage = ::showMessage,
                                 snackbarHostState = snackbarHostState,
                                 coroutineScope = coroutineScope,
+                                onRestored = { restoreFocusKey = it },
                             )
                         },
                     )
@@ -513,14 +565,19 @@ private fun HardnessManualHome() {
             entry = request.entry,
             onDismiss = { deleteInspectionRequest = null },
             onConfirm = {
-                if (manual.findEntry(request.entry.id) != null) {
-                    persist(manual.deleteEntry(request.entry.id))
+                deleteInspectionRequest = null
+                if (manualState.value.findEntry(request.entry.id) != null) {
                     if (selectedEntryId == request.entry.id) selectedEntryId = null
-                    showMessage(
-                        "已删除标准“${request.entry.standardNumber.ifBlank { request.entry.partNumbers.joinToString("、") }}”",
+                    deleteInspectionWithUndo(
+                        entry = request.entry,
+                        currentManual = { manualState.value },
+                        persist = ::persist,
+                        showMessage = ::showMessage,
+                        snackbarHostState = snackbarHostState,
+                        coroutineScope = coroutineScope,
+                        onRestored = { restoreFocusKey = it },
                     )
                 }
-                deleteInspectionRequest = null
             },
         )
     }
@@ -536,14 +593,21 @@ private fun HardnessManualHome() {
                 partCount = manual.partCountForCompound(compound.id),
                 onDismiss = { deleteCompoundRequest = null },
                 onConfirm = {
-                    persist(manual.deleteCompound(compound.id))
                     selectedCompoundId = null
                     selectedEntryId = null
                     compoundEditorRequest = null
                     inspectionEditorRequest = null
                     deleteInspectionRequest = null
                     deleteCompoundRequest = null
-                    showMessage("已删除胶料“${compound.compoundCode}”")
+                    deleteCompoundWithUndo(
+                        compound = compound,
+                        currentManual = { manualState.value },
+                        persist = ::persist,
+                        showMessage = ::showMessage,
+                        snackbarHostState = snackbarHostState,
+                        coroutineScope = coroutineScope,
+                        onRestored = { restoreFocusKey = it },
+                    )
                 },
             )
         }
@@ -635,6 +699,7 @@ private fun deleteInspectionWithUndo(
     showMessage: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
+    onRestored: (String) -> Unit,
 ) {
     val manual = currentManual()
     val index = manual.inspectionEntries.indexOfFirst { it.id == entry.id }
@@ -659,6 +724,7 @@ private fun deleteInspectionWithUndo(
                 val restored = current.inspectionEntries.toMutableList()
                 restored.add(index.coerceIn(0, restored.size), entry)
                 persist(current.copy(inspectionEntries = restored))
+                onRestored("inspection:${entry.id}")
                 showMessage("已撤回删除")
             } else if (current.findCompound(entry.compoundId) == null) {
                 showMessage("所属胶料已删除，无法恢复该检测标准")
@@ -667,18 +733,21 @@ private fun deleteInspectionWithUndo(
     }
 }
 
-private fun deleteEmptyCompoundWithUndo(
+private fun deleteCompoundWithUndo(
     compound: RubberCompound,
     currentManual: () -> HardnessManual,
     persist: (HardnessManual) -> Unit,
     showMessage: (String) -> Unit,
     snackbarHostState: SnackbarHostState,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
+    onRestored: (String) -> Unit,
 ) {
     val manual = currentManual()
-    if (manual.entriesForCompound(compound.id).isNotEmpty()) return
-    val index = manual.compounds.indexOfFirst { it.id == compound.id }
-    if (index < 0) return
+    val compoundIndex = manual.compounds.indexOfFirst { it.id == compound.id }
+    if (compoundIndex < 0) return
+    val deletedEntries = manual.inspectionEntries.mapIndexedNotNull { index, entry ->
+        if (entry.compoundId == compound.id) index to entry else null
+    }
     persist(manual.deleteCompound(compound.id))
     coroutineScope.launch {
         snackbarHostState.currentSnackbarData?.dismiss()
@@ -689,13 +758,28 @@ private fun deleteEmptyCompoundWithUndo(
         )
         if (result == SnackbarResult.ActionPerformed) {
             val current = currentManual()
-            if (
-                current.findCompound(compound.id) == null &&
-                current.entriesForCompound(compound.id).isEmpty()
-            ) {
+            if (current.findCompound(compound.id) == null) {
                 val compounds = current.compounds.toMutableList()
-                compounds.add(index.coerceIn(0, compounds.size), compound)
-                persist(current.copy(compounds = compounds))
+                compounds.add(
+                    compoundIndex.coerceIn(0, compounds.size),
+                    compound,
+                )
+                val entries = current.inspectionEntries.toMutableList()
+                deletedEntries.forEach { (index, entry) ->
+                    if (entries.none { it.id == entry.id }) {
+                        entries.add(index.coerceIn(0, entries.size), entry)
+                    }
+                }
+                persist(
+                    current.copy(
+                        compounds = compounds,
+                        inspectionEntries = entries,
+                    ),
+                )
+                val restoredKey = deletedEntries.firstOrNull()?.second?.id
+                    ?.let { "inspection:$it" }
+                    ?: "empty-compound:${compound.id}"
+                onRestored(restoredKey)
                 showMessage("已撤回删除")
             }
         }

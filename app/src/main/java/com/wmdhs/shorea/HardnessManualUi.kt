@@ -1,7 +1,15 @@
 package com.wmdhs.shorea
 
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,9 +19,11 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -38,21 +48,23 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
@@ -60,11 +72,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import java.util.Locale
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 internal data class CompoundFormData(
     val compoundCode: String,
@@ -379,53 +394,135 @@ internal fun EmptyManualSearchState(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SwipeManualHomeItem(
     item: ManualHomeItem,
+    modifier: Modifier = Modifier,
+    highlighted: Boolean = false,
+    revealed: Boolean = false,
     searchQuery: String,
     viewMode: ManualViewMode,
     onOpen: () -> Unit,
+    onReveal: () -> Unit,
+    onInteractionOutsideDelete: () -> Unit,
     onDeleteInspection: (InspectionEntry) -> Unit,
     onDeleteEmptyCompound: (RubberCompound) -> Unit,
 ) {
     key(item.stableKey) {
-        val dismissState = rememberSwipeToDismissBoxState()
-        val itemShape = RoundedCornerShape(20.dp)
-        SwipeToDismissBox(
-            state = dismissState,
-            modifier = Modifier.fillMaxWidth(),
-            enableDismissFromStartToEnd = false,
-            enableDismissFromEndToStart = true,
-            onDismiss = { direction ->
-                if (direction == SwipeToDismissBoxValue.EndToStart) {
-                    when (item) {
-                        is ManualHomeItem.Inspection -> onDeleteInspection(item.entry)
-                        is ManualHomeItem.EmptyCompound -> onDeleteEmptyCompound(item.compound)
+        val coroutineScope = rememberCoroutineScope()
+        val actionWidthPx = with(LocalDensity.current) { 88.dp.toPx() }
+        var offsetPx by remember { mutableFloatStateOf(0f) }
+        var deleteRequested by remember { mutableStateOf(false) }
+        val revealFraction = (-offsetPx / actionWidthPx).coerceIn(0f, 1f)
+        val cardCornerRadius = if (viewMode == ManualViewMode.COMPACT) 16.dp else 20.dp
+        val itemShape = RoundedCornerShape(cardCornerRadius)
+        val cardShape = RoundedCornerShape(
+            topStart = cardCornerRadius,
+            topEnd = cardCornerRadius * (1f - revealFraction),
+            bottomEnd = cardCornerRadius * (1f - revealFraction),
+            bottomStart = cardCornerRadius,
+        )
+        val highlightAlpha by animateFloatAsState(
+            targetValue = if (highlighted) 1f else 0f,
+            animationSpec = tween(durationMillis = 360),
+            label = "restored-item-highlight",
+        )
+        val draggableState = rememberDraggableState { delta ->
+            offsetPx = (offsetPx + delta).coerceIn(-actionWidthPx, 0f)
+        }
+
+        suspend fun animateOffsetTo(target: Float) {
+            animate(
+                initialValue = offsetPx,
+                targetValue = target,
+                animationSpec = tween(durationMillis = 220),
+            ) { value, _ ->
+                offsetPx = value
+            }
+        }
+
+        LaunchedEffect(revealed) {
+            val target = if (revealed) -actionWidthPx else 0f
+            if (offsetPx != target) animateOffsetTo(target)
+        }
+
+        Box(
+            modifier = modifier.fillMaxWidth()
+                .border(
+                    width = 2.dp,
+                    color = MaterialTheme.colorScheme.primary.copy(
+                        alpha = highlightAlpha,
+                    ),
+                    shape = itemShape,
+                )
+                .clip(itemShape),
+        ) {
+            Box(
+                modifier = Modifier.matchParentSize(),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxHeight()
+                        .width(88.dp)
+                        .clickable(enabled = !deleteRequested) {
+                            deleteRequested = true
+                            coroutineScope.launch {
+                                // 删除前先收起操作区。撤回时条目会以初始位置重新进入，
+                                // 不会继承“已打开”状态。
+                                animateOffsetTo(0f)
+                                when (item) {
+                                    is ManualHomeItem.Inspection -> {
+                                        onDeleteInspection(item.entry)
+                                    }
+                                    is ManualHomeItem.EmptyCompound -> {
+                                        onDeleteEmptyCompound(item.compound)
+                                    }
+                                }
+                                deleteRequested = false
+                            }
+                        },
+                    color = MaterialTheme.colorScheme.errorContainer,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "删除",
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            fontWeight = FontWeight.Bold,
+                        )
                     }
                 }
-            },
-            backgroundContent = {
-                Box(
-                    modifier = Modifier.fillMaxSize()
-                        .background(MaterialTheme.colorScheme.errorContainer, itemShape)
-                        .padding(horizontal = 24.dp),
-                    contentAlignment = Alignment.CenterEnd,
-                ) {
-                    Text(
-                        text = "删除",
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            },
-        ) {
-            ManualHomeCard(
-                item = item,
-                searchQuery = searchQuery,
-                viewMode = viewMode,
-                onOpen = onOpen,
-            )
+            }
+
+            Box(
+                modifier = Modifier.offset {
+                    IntOffset(offsetPx.roundToInt(), 0)
+                }.draggable(
+                    state = draggableState,
+                    orientation = Orientation.Horizontal,
+                    onDragStarted = { onInteractionOutsideDelete() },
+                    onDragStopped = { velocity ->
+                        val shouldReveal = velocity < -700f ||
+                            (velocity <= 700f && offsetPx <= -actionWidthPx / 2f)
+                        animateOffsetTo(if (shouldReveal) -actionWidthPx else 0f)
+                        if (shouldReveal) onReveal() else onInteractionOutsideDelete()
+                    },
+                ),
+            ) {
+                ManualHomeCard(
+                    item = item,
+                    searchQuery = searchQuery,
+                    viewMode = viewMode,
+                    shape = cardShape,
+                    onOpen = {
+                        if (offsetPx < -1f) {
+                            onInteractionOutsideDelete()
+                        } else {
+                            onInteractionOutsideDelete()
+                            onOpen()
+                        }
+                    },
+                )
+            }
         }
     }
 }
@@ -435,6 +532,7 @@ private fun ManualHomeCard(
     item: ManualHomeItem,
     searchQuery: String,
     viewMode: ManualViewMode,
+    shape: androidx.compose.ui.graphics.Shape,
     onOpen: () -> Unit,
 ) {
     when (item) {
@@ -443,11 +541,13 @@ private fun ManualHomeCard(
             entry = item.entry,
             searchQuery = searchQuery,
             viewMode = viewMode,
+            shape = shape,
             onOpen = onOpen,
         )
         is ManualHomeItem.EmptyCompound -> EmptyCompoundHomeCard(
             compound = item.compound,
             viewMode = viewMode,
+            shape = shape,
             onOpen = onOpen,
         )
     }
@@ -460,9 +560,9 @@ private fun InspectionHomeCard(
     entry: InspectionEntry,
     searchQuery: String,
     viewMode: ManualViewMode,
+    shape: androidx.compose.ui.graphics.Shape,
     onOpen: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(if (viewMode == ManualViewMode.COMPACT) 16.dp else 20.dp)
     Card(
         onClick = onOpen,
         modifier = Modifier.fillMaxWidth(),
@@ -618,12 +718,13 @@ private fun InspectionDetailedCardContent(
 private fun EmptyCompoundHomeCard(
     compound: RubberCompound,
     viewMode: ManualViewMode,
+    shape: androidx.compose.ui.graphics.Shape,
     onOpen: () -> Unit,
 ) {
     Card(
         onClick = onOpen,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(if (viewMode == ManualViewMode.COMPACT) 16.dp else 20.dp),
+        shape = shape,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         ),
