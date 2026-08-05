@@ -2,16 +2,14 @@ package com.wmdhs.shorea
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,8 +27,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,6 +34,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -60,32 +57,12 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun ShoreA() {
-    MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
-    ) {
+    ShoreATheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             HardnessManualHome()
         }
     }
 }
-
-private data class CompoundEditorRequest(
-    val existing: RubberCompound?,
-)
-
-private data class InspectionEditorRequest(
-    val compoundId: Long,
-    val existing: InspectionEntry?,
-)
-
-private data class DeleteInspectionRequest(
-    val compoundId: Long,
-    val entry: InspectionEntry,
-)
-
-private data class DeleteCompoundRequest(
-    val compound: RubberCompound,
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -96,25 +73,28 @@ private fun HardnessManualHome() {
     var manual by manualState
     var hasLoaded by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
-    var searchQuery by remember { mutableStateOf("") }
-    var searchActive by remember { mutableStateOf(false) }
-    var sortOrder by remember { mutableStateOf(ManualSortOrder.COMPOUND_CODE) }
-    var viewMode by remember { mutableStateOf(ManualViewMode.LIST) }
-    var selectedCompoundId by remember { mutableStateOf<Long?>(null) }
-    var selectedEntryId by remember { mutableStateOf<Long?>(null) }
-    var compoundEditorRequest by remember {
-        mutableStateOf<CompoundEditorRequest?>(null)
-    }
-    var inspectionEditorRequest by remember {
-        mutableStateOf<InspectionEditorRequest?>(null)
-    }
-    var deleteInspectionRequest by remember {
-        mutableStateOf<DeleteInspectionRequest?>(null)
-    }
-    var deleteCompoundRequest by remember {
-        mutableStateOf<DeleteCompoundRequest?>(null)
-    }
-    var backupActionsVisible by remember { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var searchActive by rememberSaveable { mutableStateOf(false) }
+    var sortOrderName by rememberSaveable { mutableStateOf(ManualSortOrder.COMPOUND_CODE.name) }
+    var viewModeName by rememberSaveable { mutableStateOf(ManualViewMode.LIST.name) }
+    val sortOrder = ManualSortOrder.entries.firstOrNull { it.name == sortOrderName }
+        ?: ManualSortOrder.COMPOUND_CODE
+    val viewMode = ManualViewMode.entries.firstOrNull { it.name == viewModeName }
+        ?: ManualViewMode.LIST
+    var selectedCompoundId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedEntryId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var compoundEditorVisible by rememberSaveable { mutableStateOf(false) }
+    var compoundEditorId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var inspectionEditorVisible by rememberSaveable { mutableStateOf(false) }
+    var inspectionEditorCompoundId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var inspectionEditorEntryId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var deleteInspectionVisible by rememberSaveable { mutableStateOf(false) }
+    var deleteInspectionEntryId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var deleteCompoundVisible by rememberSaveable { mutableStateOf(false) }
+    var deleteCompoundId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var backupActionsVisible by rememberSaveable { mutableStateOf(false) }
+    var fileOperation by remember { mutableStateOf<ManualFileOperation?>(null) }
+    var filePickerActive by remember { mutableStateOf(false) }
     var pendingImport by remember { mutableStateOf<ManualBackup?>(null) }
     var pendingSpreadsheetImport by remember {
         mutableStateOf<SpreadsheetImport?>(null)
@@ -166,8 +146,11 @@ private fun HardnessManualHome() {
     val exportBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
+        filePickerActive = false
         if (uri != null) {
+            fileOperation = ManualFileOperation.EXPORT_JSON
             coroutineScope.launch {
+                try {
                 val result = withContext(Dispatchers.IO) {
                     runCatching {
                         appContext.contentResolver.openOutputStream(uri, "wt")
@@ -183,6 +166,10 @@ private fun HardnessManualHome() {
                         "导出失败：${result.exceptionOrNull()?.message ?: "未知错误"}"
                     },
                 )
+                } finally {
+                    fileOperation = null
+                    backupActionsVisible = false
+                }
             }
         }
     }
@@ -192,8 +179,11 @@ private fun HardnessManualHome() {
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         ),
     ) { uri ->
+        filePickerActive = false
         if (uri != null) {
+            fileOperation = ManualFileOperation.EXPORT_EXCEL
             coroutineScope.launch {
+                try {
                 val result = withContext(Dispatchers.IO) {
                     runCatching {
                         appContext.contentResolver.openOutputStream(uri)?.use { output ->
@@ -206,6 +196,10 @@ private fun HardnessManualHome() {
                         "导出失败：${result.exceptionOrNull()?.message ?: "未知错误"}"
                     },
                 )
+                } finally {
+                    fileOperation = null
+                    backupActionsVisible = false
+                }
             }
         }
     }
@@ -213,8 +207,11 @@ private fun HardnessManualHome() {
     val importSpreadsheetLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
+        filePickerActive = false
         if (uri != null) {
+            fileOperation = ManualFileOperation.IMPORT_EXCEL
             coroutineScope.launch {
+                try {
                 val result = withContext(Dispatchers.IO) {
                     runCatching {
                         appContext.contentResolver.openInputStream(uri)?.use { input ->
@@ -228,6 +225,10 @@ private fun HardnessManualHome() {
                 }.onFailure { error ->
                     showMessage("Excel 导入失败：${error.message ?: "文件格式错误"}")
                 }
+                } finally {
+                    fileOperation = null
+
+                }
             }
         }
     }
@@ -235,8 +236,11 @@ private fun HardnessManualHome() {
     val importBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
+        filePickerActive = false
         if (uri != null) {
+            fileOperation = ManualFileOperation.IMPORT_JSON
             coroutineScope.launch {
+                try {
                 val result = withContext(Dispatchers.IO) {
                     runCatching {
                         val rawValue = appContext.contentResolver
@@ -253,6 +257,10 @@ private fun HardnessManualHome() {
                 }.onFailure { error ->
                     showMessage("导入失败：${error.message ?: "文件格式错误"}")
                 }
+                } finally {
+                    fileOperation = null
+
+                }
             }
         }
     }
@@ -261,6 +269,12 @@ private fun HardnessManualHome() {
         store.state.collectLatest { state ->
             manual = state.manual
             loadError = state.loadError
+            if (state.loadError != null) {
+                compoundEditorVisible = false
+                inspectionEditorVisible = false
+                deleteInspectionVisible = false
+                deleteCompoundVisible = false
+            }
             selectedCompoundId = selectedCompoundId?.takeIf { selectedId ->
                 state.manual.findCompound(selectedId) != null
             }
@@ -270,6 +284,11 @@ private fun HardnessManualHome() {
             }
             hasLoaded = true
         }
+    }
+
+    BackHandler(searchActive) {
+        searchActive = false
+        revealedItemKey = null
     }
 
     val normalizedQuery = searchQuery.trim()
@@ -305,6 +324,8 @@ private fun HardnessManualHome() {
         topBar = {
             ManualTopBar(
                 hasLoaded = hasLoaded,
+                compoundCount = manual.compounds.size,
+                entryCount = manual.inspectionEntries.size,
                 actionsEnabled = hasLoaded && loadError == null,
                 searchActive = searchActive,
                 query = searchQuery,
@@ -313,18 +334,18 @@ private fun HardnessManualHome() {
                 onSearchActiveChange = { revealedItemKey = null; searchActive = it },
                 onQueryChange = { revealedItemKey = null; searchQuery = it },
                 onClearQuery = { revealedItemKey = null; searchQuery = "" },
-                onSortOrderChange = { revealedItemKey = null; sortOrder = it },
-                onViewModeChange = { revealedItemKey = null; viewMode = it },
+                onSortOrderChange = { revealedItemKey = null; sortOrderName = it.name },
+                onViewModeChange = { revealedItemKey = null; viewModeName = it.name },
                 onImportExport = { revealedItemKey = null; backupActionsVisible = true },
             )
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         floatingActionButton = {
-            if (hasLoaded && loadError == null) {
+            if (hasLoaded && loadError == null && manual.compounds.isNotEmpty()) {
                 ExtendedFloatingActionButton(
                     onClick = {
                         revealedItemKey = null
-                        compoundEditorRequest = CompoundEditorRequest(existing = null)
+                        compoundEditorId = null; compoundEditorVisible = true
                     },
                 ) {
                     Text("＋ 添加胶料")
@@ -339,10 +360,14 @@ private fun HardnessManualHome() {
                 detail = loadError.orEmpty(),
                 onRestoreBackup = { backupActionsVisible = true },
             )
-            manual.compounds.isEmpty() -> EmptyManualState(innerPadding)
+            manual.compounds.isEmpty() -> EmptyManualState(
+                innerPadding = innerPadding,
+                onAddCompound = { compoundEditorId = null; compoundEditorVisible = true },
+            )
             visibleHomeItems.isEmpty() -> EmptyManualSearchState(
                 innerPadding = innerPadding,
                 query = normalizedQuery,
+                onClearSearch = { searchQuery = "" },
             )
             else -> LazyColumn(
                 state = listState,
@@ -376,11 +401,9 @@ private fun HardnessManualHome() {
                         highlighted = restoreFocusKey == item.stableKey,
                         revealed = revealedItemKey == item.stableKey,
                         modifier = Modifier.animateItem(
-                            fadeInSpec = tween(durationMillis = 360),
-                            placementSpec = spring(
-                                stiffness = Spring.StiffnessMediumLow,
-                            ),
-                            fadeOutSpec = tween(durationMillis = 180),
+                            fadeInSpec = spring(),
+                            placementSpec = spring(),
+                            fadeOutSpec = spring(),
                         ),
                         searchQuery = normalizedQuery,
                         viewMode = viewMode,
@@ -399,26 +422,12 @@ private fun HardnessManualHome() {
                         onReveal = { revealedItemKey = item.stableKey },
                         onInteractionOutsideDelete = { revealedItemKey = null },
                         onDeleteInspection = { entry ->
-                            deleteInspectionWithUndo(
-                                entry = entry,
-                                currentManual = { manualState.value },
-                                persist = ::persist,
-                                showMessage = ::showMessage,
-                                snackbarHostState = snackbarHostState,
-                                coroutineScope = coroutineScope,
-                                onRestored = { restoreFocusKey = it },
-                            )
+                            revealedItemKey = null
+                            deleteInspectionEntryId = entry.id; deleteInspectionVisible = true
                         },
                         onDeleteEmptyCompound = { compound ->
-                            deleteCompoundWithUndo(
-                                compound = compound,
-                                currentManual = { manualState.value },
-                                persist = ::persist,
-                                showMessage = ::showMessage,
-                                snackbarHostState = snackbarHostState,
-                                coroutineScope = coroutineScope,
-                                onRestored = { restoreFocusKey = it },
-                            )
+                            revealedItemKey = null
+                            deleteCompoundId = compound.id; deleteCompoundVisible = true
                         },
                     )
                 }
@@ -428,38 +437,29 @@ private fun HardnessManualHome() {
 
     if (
         selectedCompound != null &&
-        compoundEditorRequest == null &&
-        inspectionEditorRequest == null &&
-        deleteInspectionRequest == null &&
-        deleteCompoundRequest == null
+        !compoundEditorVisible &&
+        !inspectionEditorVisible &&
+        !deleteInspectionVisible &&
+        !deleteCompoundVisible
     ) {
         CompoundDetailSheet(
             compound = selectedCompound,
             entries = selectedEntries,
             highlightedEntryId = selectedEntryId,
             onEditCompound = {
-                compoundEditorRequest = CompoundEditorRequest(selectedCompound)
+                compoundEditorId = selectedCompound.id; compoundEditorVisible = true
             },
             onAddInspection = {
-                inspectionEditorRequest = InspectionEditorRequest(
-                    compoundId = selectedCompound.id,
-                    existing = null,
-                )
+                inspectionEditorCompoundId = selectedCompound.id; inspectionEditorEntryId = null; inspectionEditorVisible = true
             },
             onEditInspection = { entry ->
-                inspectionEditorRequest = InspectionEditorRequest(
-                    compoundId = selectedCompound.id,
-                    existing = entry,
-                )
+                inspectionEditorCompoundId = selectedCompound.id; inspectionEditorEntryId = entry.id; inspectionEditorVisible = true
             },
             onDeleteInspection = { entry ->
-                deleteInspectionRequest = DeleteInspectionRequest(
-                    compoundId = selectedCompound.id,
-                    entry = entry,
-                )
+                deleteInspectionEntryId = entry.id; deleteInspectionVisible = true
             },
             onDeleteCompound = {
-                deleteCompoundRequest = DeleteCompoundRequest(selectedCompound)
+                deleteCompoundId = selectedCompound.id; deleteCompoundVisible = true
             },
             onDismiss = {
                 selectedCompoundId = null
@@ -468,174 +468,106 @@ private fun HardnessManualHome() {
         )
     }
 
-    compoundEditorRequest?.let { request ->
-        CompoundEditorDialog(
-            initial = request.existing,
-            compounds = manual.compounds,
-            onDismiss = { compoundEditorRequest = null },
-            onSave = { form ->
-                val existing = request.existing
-                val updatedCompound = if (existing == null) {
-                    RubberCompound(
-                        id = nextEntityId(manual.compounds.map(RubberCompound::id)),
-                        compoundCode = form.compoundCode.trim(),
-                        testPieceCureTemperatureC = form.testPieceCureTemperatureC,
-                        testPieceCureTimeMinutes = form.testPieceCureTimeMinutes,
-                        customBlockCureTimeMinutes = form.customBlockCureTimeMinutes,
-                        notes = form.notes,
-                    )
-                } else {
-                    existing.copy(
-                        compoundCode = form.compoundCode.trim(),
-                        testPieceCureTemperatureC = form.testPieceCureTemperatureC,
-                        testPieceCureTimeMinutes = form.testPieceCureTimeMinutes,
-                        customBlockCureTimeMinutes = form.customBlockCureTimeMinutes,
-                        notes = form.notes,
-                    )
-                }
-                if (existing == null) {
-                    persist(manual.copy(compounds = manual.compounds + updatedCompound))
-                    selectedCompoundId = updatedCompound.id
-                } else {
-                    updateCompound(updatedCompound)
-                }
-                compoundEditorRequest = null
-            },
-        )
+    if (compoundEditorVisible && hasLoaded && loadError == null) {
+        val existing = compoundEditorId?.let(manual::findCompound)
+        if (compoundEditorId != null && existing == null) {
+            compoundEditorVisible = false
+        } else {
+            CompoundEditorDialog(
+                initial = existing,
+                compounds = manual.compounds,
+                onDismiss = { compoundEditorVisible = false },
+                onSave = { form ->
+                    val updatedCompound = if (existing == null) RubberCompound(
+                        id = nextEntityId(manual.compounds.map(RubberCompound::id)), compoundCode = form.compoundCode.trim(),
+                        testPieceCureTemperatureC = form.testPieceCureTemperatureC, testPieceCureTimeMinutes = form.testPieceCureTimeMinutes,
+                        customBlockCureTimeMinutes = form.customBlockCureTimeMinutes, notes = form.notes,
+                    ) else existing.copy(compoundCode = form.compoundCode.trim(), testPieceCureTemperatureC = form.testPieceCureTemperatureC,
+                        testPieceCureTimeMinutes = form.testPieceCureTimeMinutes, customBlockCureTimeMinutes = form.customBlockCureTimeMinutes, notes = form.notes)
+                    if (existing == null) { persist(manual.copy(compounds = manual.compounds + updatedCompound)); selectedCompoundId = updatedCompound.id }
+                    else updateCompound(updatedCompound)
+                    compoundEditorVisible = false
+                },
+            )
+        }
     }
 
-    inspectionEditorRequest?.let { request ->
-        val compound = manual.findCompound(request.compoundId)
-        if (compound == null) {
-            inspectionEditorRequest = null
+    if (inspectionEditorVisible && hasLoaded && loadError == null) {
+        val compound = inspectionEditorCompoundId?.let(manual::findCompound)
+        val existing = inspectionEditorEntryId?.let(manual::findEntry)
+        if (compound == null || (inspectionEditorEntryId != null && (existing == null || existing.compoundId != compound.id))) {
+            inspectionEditorVisible = false
         } else {
             InspectionEditorDialog(
-                compound = compound,
-                entries = manual.entriesForCompound(compound.id),
-                initial = request.existing,
-                onDismiss = { inspectionEditorRequest = null },
+                compound = compound, entries = manual.entriesForCompound(compound.id), initial = existing,
+                onDismiss = { inspectionEditorVisible = false },
                 onSave = { form ->
-                    val existing = request.existing
                     val normalizedParts = normalizePartNumbers(form.partNumbers)
-                    val entry = if (existing == null) {
-                        InspectionEntry(
-                            id = nextEntityId(
-                                manual.inspectionEntries.map(InspectionEntry::id),
-                            ),
-                            compoundId = compound.id,
-                            standardNumber = form.standardNumber.trim(),
-                            partNumbers = normalizedParts,
-                            hardness = form.hardness.normalized(),
-                            productCategory = form.productCategory.trim(),
-                            color = form.color.trim(),
-                            tensileStrength = form.tensileStrength.trim(),
-                            elongation = form.elongation.trim(),
-                            notes = form.notes.trim(),
-                        )
-                    } else {
-                        existing.copy(
-                            standardNumber = form.standardNumber.trim(),
-                            partNumbers = normalizedParts,
-                            hardness = form.hardness.normalized(),
-                            productCategory = form.productCategory.trim(),
-                            color = form.color.trim(),
-                            tensileStrength = form.tensileStrength.trim(),
-                            elongation = form.elongation.trim(),
-                            notes = form.notes.trim(),
-                        )
-                    }
-                    val entries = if (existing == null) {
-                        manual.inspectionEntries + entry
-                    } else {
-                        manual.inspectionEntries.map { current ->
-                            if (current.id == entry.id) entry else current
-                        }
-                    }
-                    persist(manual.copy(inspectionEntries = entries))
-                    selectedCompoundId = compound.id
-                    selectedEntryId = entry.id
-                    inspectionEditorRequest = null
+                    val entry = if (existing == null) InspectionEntry(
+                        id = nextEntityId(manual.inspectionEntries.map(InspectionEntry::id)), compoundId = compound.id,
+                        standardNumber = form.standardNumber.trim(), partNumbers = normalizedParts, hardness = form.hardness.normalized(),
+                        productCategory = form.productCategory.trim(), color = form.color.trim(), tensileStrength = form.tensileStrength.trim(),
+                        elongation = form.elongation.trim(), notes = form.notes.trim(),
+                    ) else existing.copy(standardNumber = form.standardNumber.trim(), partNumbers = normalizedParts, hardness = form.hardness.normalized(),
+                        productCategory = form.productCategory.trim(), color = form.color.trim(), tensileStrength = form.tensileStrength.trim(),
+                        elongation = form.elongation.trim(), notes = form.notes.trim())
+                    val entries = if (existing == null) manual.inspectionEntries + entry else manual.inspectionEntries.map { if (it.id == entry.id) entry else it }
+                    persist(manual.copy(inspectionEntries = entries)); selectedCompoundId = compound.id; selectedEntryId = entry.id; inspectionEditorVisible = false
                 },
             )
         }
     }
 
-    deleteInspectionRequest?.let { request ->
-        DeleteInspectionDialog(
-            entry = request.entry,
-            onDismiss = { deleteInspectionRequest = null },
-            onConfirm = {
-                deleteInspectionRequest = null
-                if (manualState.value.findEntry(request.entry.id) != null) {
-                    if (selectedEntryId == request.entry.id) selectedEntryId = null
-                    deleteInspectionWithUndo(
-                        entry = request.entry,
-                        currentManual = { manualState.value },
-                        persist = ::persist,
-                        showMessage = ::showMessage,
-                        snackbarHostState = snackbarHostState,
-                        coroutineScope = coroutineScope,
-                        onRestored = { restoreFocusKey = it },
-                    )
+    if (deleteInspectionVisible && hasLoaded && loadError == null) {
+        val entry = deleteInspectionEntryId?.let(manual::findEntry)
+        if (entry == null) deleteInspectionVisible = false else DeleteInspectionDialog(
+            entry = entry, onDismiss = { deleteInspectionVisible = false }, onConfirm = {
+                deleteInspectionVisible = false
+                if (manualState.value.findEntry(entry.id) != null) {
+                    if (selectedEntryId == entry.id) selectedEntryId = null
+                    deleteInspectionWithUndo(entry, { manualState.value }, ::persist, ::showMessage, snackbarHostState, coroutineScope) { restoreFocusKey = it }
                 }
             },
         )
     }
 
-    deleteCompoundRequest?.let { request ->
-        val compound = manual.findCompound(request.compound.id)
-        if (compound == null) {
-            deleteCompoundRequest = null
-        } else {
-            DeleteCompoundDialog(
-                compound = compound,
-                entryCount = manual.entryCountForCompound(compound.id),
-                partCount = manual.partCountForCompound(compound.id),
-                onDismiss = { deleteCompoundRequest = null },
-                onConfirm = {
-                    selectedCompoundId = null
-                    selectedEntryId = null
-                    compoundEditorRequest = null
-                    inspectionEditorRequest = null
-                    deleteInspectionRequest = null
-                    deleteCompoundRequest = null
-                    deleteCompoundWithUndo(
-                        compound = compound,
-                        currentManual = { manualState.value },
-                        persist = ::persist,
-                        showMessage = ::showMessage,
-                        snackbarHostState = snackbarHostState,
-                        coroutineScope = coroutineScope,
-                        onRestored = { restoreFocusKey = it },
-                    )
-                },
-            )
-        }
+    if (deleteCompoundVisible && hasLoaded && loadError == null) {
+        val compound = deleteCompoundId?.let(manual::findCompound)
+        if (compound == null) deleteCompoundVisible = false else DeleteCompoundDialog(
+            compound = compound, entryCount = manual.entryCountForCompound(compound.id), partCount = manual.partCountForCompound(compound.id),
+            onDismiss = { deleteCompoundVisible = false }, onConfirm = {
+                selectedCompoundId = null; selectedEntryId = null; compoundEditorVisible = false; inspectionEditorVisible = false
+                deleteInspectionVisible = false; deleteCompoundVisible = false
+                deleteCompoundWithUndo(compound, { manualState.value }, ::persist, ::showMessage, snackbarHostState, coroutineScope) { restoreFocusKey = it }
+            },
+        )
     }
 
     if (backupActionsVisible) {
         ManualBackupActionsDialog(
             manual = manual,
+            operation = fileOperation,
+            pickerActive = filePickerActive,
             onExportBackup = {
-                backupActionsVisible = false
-                exportBackupLauncher.launch(manualBackupFileName())
+                if (fileOperation == null && !filePickerActive) { filePickerActive = true; exportBackupLauncher.launch(manualBackupFileName()) }
             },
             onImportBackup = {
-                importBackupLauncher.launch(
-                    arrayOf("application/json", "text/plain", "application/octet-stream"),
-                )
+                if (fileOperation == null && !filePickerActive) {
+                    filePickerActive = true
+                    importBackupLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
+                }
             },
             onExportSpreadsheet = {
-                backupActionsVisible = false
-                exportSpreadsheetLauncher.launch(manualSpreadsheetFileName())
+                if (fileOperation == null && !filePickerActive) { filePickerActive = true; exportSpreadsheetLauncher.launch(manualSpreadsheetFileName()) }
             },
             onImportSpreadsheet = {
-                importSpreadsheetLauncher.launch(
-                    arrayOf(
+                if (fileOperation == null && !filePickerActive) {
+                    filePickerActive = true
+                    importSpreadsheetLauncher.launch(arrayOf(
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         "application/octet-stream",
-                    ),
-                )
+                    ))
+                }
             },
             onDismiss = { backupActionsVisible = false },
         )

@@ -1,8 +1,8 @@
 package com.wmdhs.shorea
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,7 +10,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,26 +17,27 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -59,15 +59,24 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.invisibleToUser
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -104,6 +113,8 @@ internal data class InspectionFormData(
 @Composable
 internal fun ManualTopBar(
     hasLoaded: Boolean,
+    compoundCount: Int,
+    entryCount: Int,
     actionsEnabled: Boolean,
     searchActive: Boolean,
     query: String,
@@ -117,106 +128,95 @@ internal fun ManualTopBar(
     onImportExport: () -> Unit,
 ) {
     var sortMenuExpanded by remember { mutableStateOf(false) }
-    var viewMenuExpanded by remember { mutableStateOf(false) }
-
-    TopAppBar(
-        title = {
+    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    LaunchedEffect(searchActive) {
+        if (searchActive && actionsEnabled) {
+            focusRequester.requestFocus()
+            keyboard?.show()
+        }
+    }
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(
+                            "硬度块手册",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.semantics { heading() },
+                        )
+                        Text(
+                            "$compoundCount 个胶料 · $entryCount 个检测标准 · 本地保存",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        enabled = actionsEnabled,
+                        modifier = Modifier.semantics { contentDescription = if (searchActive) "关闭搜索" else "搜索" },
+                        onClick = {
+                            if (searchActive) keyboard?.hide()
+                            onSearchActiveChange(!searchActive)
+                        },
+                    ) { ManualTopBarIcon(if (searchActive) ManualTopBarIconType.CLOSE else ManualTopBarIconType.SEARCH) }
+                    Box {
+                        IconButton(
+                            enabled = actionsEnabled,
+                            modifier = Modifier.semantics { contentDescription = "排序，当前${sortOrder.label}" },
+                            onClick = { sortMenuExpanded = true },
+                        ) { ManualTopBarIcon(ManualTopBarIconType.SORT) }
+                        DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }) {
+                            ManualSortOrder.entries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.label) },
+                                    modifier = Modifier.semantics { selected = option == sortOrder },
+                                    onClick = { onSortOrderChange(option); sortMenuExpanded = false },
+                                )
+                            }
+                        }
+                    }
+                    IconButton(
+                        enabled = hasLoaded,
+                        modifier = Modifier.semantics { contentDescription = "导入与导出" },
+                        onClick = onImportExport,
+                    ) { ManualTopBarIcon(ManualTopBarIconType.MORE) }
+                },
+            )
             if (searchActive && actionsEnabled) {
                 OutlinedTextField(
                     value = query,
                     onValueChange = onQueryChange,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                        .focusRequester(focusRequester),
                     placeholder = { Text("搜索胶料号、标准号、部品号或硬度") },
                     trailingIcon = {
-                        if (query.isNotEmpty()) {
-                            IconButton(onClick = onClearQuery) {
-                                ManualTopBarIcon(ManualTopBarIconType.CLOSE)
-                            }
-                        }
+                        if (query.isNotEmpty()) IconButton(
+                            onClick = onClearQuery,
+                            modifier = Modifier.semantics { contentDescription = "清除搜索内容" },
+                        ) { ManualTopBarIcon(ManualTopBarIconType.CLOSE) }
                     },
+                    keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { keyboard?.hide() }),
                     singleLine = true,
                 )
-            } else {
-                Text("硬度块手册", fontWeight = FontWeight.SemiBold)
             }
-        },
-        actions = {
-            IconButton(
-                enabled = actionsEnabled,
-                modifier = Modifier.semantics {
-                    contentDescription = if (searchActive) "关闭搜索" else "搜索"
-                },
-                onClick = { onSearchActiveChange(!searchActive) },
-            ) {
-                ManualTopBarIcon(
-                    if (searchActive) ManualTopBarIconType.CLOSE
-                    else ManualTopBarIconType.SEARCH,
+            if (actionsEnabled) {
+                ExpressiveChoiceGroup(
+                    options = ManualViewMode.entries,
+                    selected = viewMode,
+                    label = { it.label },
+                    onSelected = onViewModeChange,
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                 )
             }
-
-            if (!searchActive) {
-                Box {
-                    IconButton(
-                        enabled = actionsEnabled,
-                        modifier = Modifier.semantics {
-                            contentDescription = "分类"
-                        },
-                        onClick = { sortMenuExpanded = true },
-                    ) {
-                        ManualTopBarIcon(ManualTopBarIconType.SORT)
-                    }
-                    DropdownMenu(
-                        expanded = sortMenuExpanded,
-                        onDismissRequest = { sortMenuExpanded = false },
-                    ) {
-                        ManualSortOrder.entries.forEach { option ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(if (option == sortOrder) "✓ ${option.label}" else option.label)
-                                },
-                                onClick = {
-                                    onSortOrderChange(option)
-                                    sortMenuExpanded = false
-                                },
-                            )
-                        }
-                    }
-                }
-            }
-
-            Box {
-                IconButton(
-                    enabled = actionsEnabled,
-                    modifier = Modifier.semantics {
-                        contentDescription = "视图"
-                    },
-                    onClick = { viewMenuExpanded = true },
-                ) {
-                    ManualTopBarIcon(ManualTopBarIconType.VIEW)
-                }
-                DropdownMenu(
-                    expanded = viewMenuExpanded,
-                    onDismissRequest = { viewMenuExpanded = false },
-                ) {
-                    ManualViewMode.entries.forEach { option ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(if (option == viewMode) "✓ ${option.label}" else option.label)
-                            },
-                            onClick = {
-                                onViewModeChange(option)
-                                viewMenuExpanded = false
-                            },
-                        )
-                    }
-                }
-            }
-
-            if (hasLoaded) {
-                TextButton(onClick = onImportExport) { Text("导入导出") }
-            }
-        },
-    )
+        }
+    }
 }
 
 private enum class ManualTopBarIconType {
@@ -224,6 +224,7 @@ private enum class ManualTopBarIconType {
     SORT,
     VIEW,
     CLOSE,
+    MORE,
 }
 
 @Composable
@@ -278,6 +279,11 @@ private fun ManualTopBarIcon(
                     }
                 }
             }
+            ManualTopBarIconType.MORE -> {
+                listOf(.25f, .5f, .75f).forEach { x ->
+                    drawCircle(color = iconColor, radius = 2.dp.toPx(), center = Offset(size.width * x, size.height / 2f))
+                }
+            }
             ManualTopBarIconType.CLOSE -> {
                 drawLine(
                     color = iconColor,
@@ -304,7 +310,14 @@ internal fun ManualLoadingState(innerPadding: PaddingValues) {
         modifier = Modifier.fillMaxSize().padding(innerPadding),
         contentAlignment = Alignment.Center,
     ) {
-        CircularProgressIndicator()
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.semantics { contentDescription = "正在读取本地手册" },
+        ) {
+            ExpressiveLoadingGlyph(modifier = Modifier.size(48.dp), color = MaterialTheme.colorScheme.primary)
+            Text("正在读取本地手册", style = MaterialTheme.typography.bodyLarge)
+        }
     }
 }
 
@@ -344,7 +357,10 @@ internal fun ManualDataErrorState(
 }
 
 @Composable
-internal fun EmptyManualState(innerPadding: PaddingValues) {
+internal fun EmptyManualState(
+    innerPadding: PaddingValues,
+    onAddCompound: () -> Unit,
+) {
     Box(
         modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 32.dp),
         contentAlignment = Alignment.Center,
@@ -359,10 +375,11 @@ internal fun EmptyManualState(innerPadding: PaddingValues) {
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "点击右下角“添加胶料”建立硬度块手册",
+                text = "建立第一种胶料，开始整理检测标准与部品硬度。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Button(onClick = onAddCompound) { Text("添加第一种胶料") }
         }
     }
 }
@@ -371,6 +388,7 @@ internal fun EmptyManualState(innerPadding: PaddingValues) {
 internal fun EmptyManualSearchState(
     innerPadding: PaddingValues,
     query: String,
+    onClearSearch: () -> Unit,
 ) {
     Box(
         modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 32.dp),
@@ -390,6 +408,7 @@ internal fun EmptyManualSearchState(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Button(onClick = onClearSearch) { Text("清除搜索") }
         }
     }
 }
@@ -414,7 +433,7 @@ internal fun SwipeManualHomeItem(
         var offsetPx by remember { mutableFloatStateOf(0f) }
         var deleteRequested by remember { mutableStateOf(false) }
         val revealFraction = (-offsetPx / actionWidthPx).coerceIn(0f, 1f)
-        val cardCornerRadius = if (viewMode == ManualViewMode.COMPACT) 16.dp else 20.dp
+        val cardCornerRadius = if (viewMode == ManualViewMode.COMPACT) 20.dp else 24.dp
         val itemShape = RoundedCornerShape(cardCornerRadius)
         val cardShape = RoundedCornerShape(
             topStart = cardCornerRadius,
@@ -424,7 +443,7 @@ internal fun SwipeManualHomeItem(
         )
         val highlightAlpha by animateFloatAsState(
             targetValue = if (highlighted) 1f else 0f,
-            animationSpec = tween(durationMillis = 360),
+            animationSpec = androidx.compose.animation.core.spring(),
             label = "restored-item-highlight",
         )
         val draggableState = rememberDraggableState { delta ->
@@ -435,7 +454,7 @@ internal fun SwipeManualHomeItem(
             animate(
                 initialValue = offsetPx,
                 targetValue = target,
-                animationSpec = tween(durationMillis = 220),
+                animationSpec = androidx.compose.animation.core.spring(),
             ) { value, _ ->
                 offsetPx = value
             }
@@ -464,7 +483,15 @@ internal fun SwipeManualHomeItem(
                 Surface(
                     modifier = Modifier.fillMaxHeight()
                         .width(88.dp)
-                        .clickable(enabled = !deleteRequested) {
+                        .semantics {
+                            if (!revealed) invisibleToUser()
+                            role = Role.Button
+                            contentDescription = when (item) {
+                                is ManualHomeItem.Inspection -> "删除检测标准 ${item.entry.standardNumber}，危险操作"
+                                is ManualHomeItem.EmptyCompound -> "删除胶料 ${item.compound.compoundCode}，危险操作"
+                            }
+                        }
+                        .clickable(enabled = revealed && !deleteRequested) {
                             deleteRequested = true
                             coroutineScope.launch {
                                 // 删除前先收起操作区。撤回时条目会以初始位置重新进入，
@@ -494,7 +521,19 @@ internal fun SwipeManualHomeItem(
             }
 
             Box(
-                modifier = Modifier.offset {
+                modifier = Modifier.semantics {
+                    val label = when (item) {
+                        is ManualHomeItem.Inspection -> "删除此检测标准"
+                        is ManualHomeItem.EmptyCompound -> "删除此胶料"
+                    }
+                    customActions = listOf(CustomAccessibilityAction(label) {
+                        when (item) {
+                            is ManualHomeItem.Inspection -> onDeleteInspection(item.entry)
+                            is ManualHomeItem.EmptyCompound -> onDeleteEmptyCompound(item.compound)
+                        }
+                        true
+                    })
+                }.offset {
                     IntOffset(offsetPx.roundToInt(), 0)
                 }.draggable(
                     state = draggableState,
@@ -596,74 +635,58 @@ private fun InspectionListCardContent(
     entry: InspectionEntry,
     searchQuery: String,
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(7.dp),
-            ) {
-                PartNumberList(entry.partNumbers)
-                HomeMetaLine("胶料号", compound.compoundCode)
-                HomeMetaLine("标准号", entry.standardNumber.ifBlank { "未填写" })
+    val fontScale = LocalDensity.current.fontScale
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        BoxWithConstraints {
+            val stacked = maxWidth < 400.dp || fontScale >= 1.3f
+            if (stacked) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ListCardMetadata(compound, entry, compact = false)
+                    PrimaryHardnessDisplay(entry.effectiveHardness, compact = true)
+                }
+            } else {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.Top) {
+                    Column(modifier = Modifier.weight(1f)) { ListCardMetadata(compound, entry, compact = false) }
+                    PrimaryHardnessDisplay(entry.effectiveHardness, compact = true)
+                }
             }
-            PrimaryHardnessDisplay(
-                hardness = entry.effectiveHardness,
-                compact = true,
-                modifier = Modifier.width(112.dp),
-            )
         }
-        SecondaryHardnessRow(
-            hardness = entry.hardness,
-            primarySource = entry.effectiveHardness?.source,
-            compact = true,
-        )
-        SearchEntryHint(entry = entry, query = searchQuery)
+        SecondaryHardnessRow(entry.hardness, entry.effectiveHardness?.source, compact = true)
+        SearchEntryHint(entry, searchQuery)
     }
 }
 
 @Composable
-private fun InspectionCompactCardContent(
-    compound: RubberCompound,
-    entry: InspectionEntry,
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                PartNumberList(entry.partNumbers, compact = true)
-                Text(
-                    text = "${compound.compoundCode} · 标准号 ${entry.standardNumber.ifBlank { "未填写" }}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+private fun InspectionCompactCardContent(compound: RubberCompound, entry: InspectionEntry) {
+    val fontScale = LocalDensity.current.fontScale
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        BoxWithConstraints {
+            val stacked = maxWidth < 400.dp || fontScale >= 1.3f
+            if (stacked) {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    ListCardMetadata(compound, entry, compact = true)
+                    PrimaryHardnessDisplay(entry.effectiveHardness, compact = true)
+                }
+            } else {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+                    Column(modifier = Modifier.weight(1f)) { ListCardMetadata(compound, entry, compact = true) }
+                    PrimaryHardnessDisplay(entry.effectiveHardness, compact = true)
+                }
             }
-            PrimaryHardnessDisplay(
-                hardness = entry.effectiveHardness,
-                compact = true,
-                modifier = Modifier.width(100.dp),
-            )
         }
-        SecondaryHardnessRow(
-            hardness = entry.hardness,
-            primarySource = entry.effectiveHardness?.source,
-            compact = true,
-        )
+        SecondaryHardnessRow(entry.hardness, entry.effectiveHardness?.source, compact = true)
+    }
+}
+
+@Composable
+private fun ListCardMetadata(compound: RubberCompound, entry: InspectionEntry, compact: Boolean) {
+    Column(verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 7.dp)) {
+        PartNumberList(entry.partNumbers, compact = compact)
+        if (compact) Text("${compound.compoundCode} · 标准号 ${entry.standardNumber.ifBlank { "未填写" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else {
+            HomeMetaLine("胶料号", compound.compoundCode)
+            HomeMetaLine("标准号", entry.standardNumber.ifBlank { "未填写" })
+        }
     }
 }
 
@@ -678,18 +701,9 @@ private fun InspectionDetailedCardContent(
         verticalArrangement = Arrangement.spacedBy(11.dp),
     ) {
         PartNumberList(entry.partNumbers)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                HomeMetaLine("胶料号", compound.compoundCode)
-                HomeMetaLine("标准号", entry.standardNumber.ifBlank { "未填写" })
-            }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            HomeMetaLine("胶料号", compound.compoundCode)
+            HomeMetaLine("标准号", entry.standardNumber.ifBlank { "未填写" })
             PrimaryHardnessDisplay(entry.effectiveHardness, compact = true)
         }
         HorizontalDivider()
@@ -826,11 +840,17 @@ private fun PrimaryHardnessDisplay(
     compact: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Column(
+    Surface(
         modifier = modifier,
-        horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        shape = MaterialTheme.shapes.small,
+        color = if (hardness == null) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.primaryContainer,
+        contentColor = if (hardness == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimaryContainer,
     ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
         if (hardness == null) {
             Text(
                 text = "未设硬度",
@@ -850,6 +870,7 @@ private fun PrimaryHardnessDisplay(
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold,
             )
+        }
         }
     }
 }
@@ -892,14 +913,12 @@ private fun AllHardnessDetails(
     val values = hardness.allValues().filter { it.first != primarySource }
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         values.forEach { (source, value) ->
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.Top,
+                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 Text(
                     text = source.label,
-                    modifier = Modifier.width(52.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (source == primarySource) {
                         MaterialTheme.colorScheme.primary
@@ -962,14 +981,14 @@ internal fun CompoundDetailSheet(
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         LazyColumn(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Box(
                         modifier = Modifier.size(48.dp).background(
@@ -980,12 +999,12 @@ internal fun CompoundDetailSheet(
                     ) {
                         CompoundGlyph(Modifier.size(29.dp))
                     }
-                    Spacer(Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column {
                         Text(
                             text = compound.compoundCode,
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
+                            modifier = Modifier.semantics { heading() },
                         )
                         Text(
                             text = "${entries.size} 个检测标准 · ${entries.sumOf { it.partNumbers.size }} 个部品关联",
@@ -1004,7 +1023,7 @@ internal fun CompoundDetailSheet(
                 ) {
                     Text(
                         text = "检测标准",
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).semantics { heading() },
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -1140,17 +1159,12 @@ private fun CureConditionCard(compound: RubberCompound) {
 
 @Composable
 private fun ConditionRow(label: String, value: String, supporting: String = "") {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.Top,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Text(
-            text = label,
-            modifier = Modifier.width(64.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(text = label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(value, fontWeight = FontWeight.SemiBold)
             if (supporting.isNotBlank()) {
                 Text(supporting, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1196,7 +1210,18 @@ private fun HardnessValueDisplay(
     val parsed = remember(value) { parseHardness(value) }
     val mainStyle = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineMedium
     val valueColor = if (accent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    val spokenValue = when (parsed) {
+        is ParsedHardness.Tolerance -> "硬度 ${parsed.nominal} A，允许范围 ${parsed.lowerLimit} 到 ${parsed.upperLimit} A"
+        is ParsedHardness.Range -> "硬度范围 ${parsed.lower} 到 ${parsed.upper} A"
+        is ParsedHardness.Minimum -> "硬度最低 ${parsed.value} A"
+        is ParsedHardness.Maximum -> "硬度最高 ${parsed.value} A"
+        is ParsedHardness.Exact -> "硬度 ${parsed.value} A"
+        is ParsedHardness.Raw -> "硬度 ${parsed.raw.ifBlank { "未填写" }}"
+    }
+    Column(
+        modifier = modifier.semantics(mergeDescendants = true) { contentDescription = spokenValue },
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
         when (parsed) {
             is ParsedHardness.Tolerance -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1204,13 +1229,13 @@ private fun HardnessValueDisplay(
                     Column(modifier = Modifier.padding(start = 3.dp)) {
                         Text(
                             "+${parsed.upperDeviation}",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, lineHeight = 10.sp),
+                            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, lineHeight = 13.sp),
                             color = valueColor,
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
                             "−${parsed.lowerDeviation}",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, lineHeight = 10.sp),
+                            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, lineHeight = 13.sp),
                             color = valueColor,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -1247,17 +1272,12 @@ private fun HardnessValueDisplay(
 @Composable
 private fun OptionalDetailRow(label: String, value: String) {
     if (value.isBlank()) return
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.Top,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Text(
-            text = label,
-            modifier = Modifier.width(88.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(text = value, modifier = Modifier.weight(1f))
+        Text(text = label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text = value)
     }
 }
 
@@ -1283,19 +1303,25 @@ internal fun CompoundEditorDialog(
     onDismiss: () -> Unit,
     onSave: (CompoundFormData) -> Unit,
 ) {
-    var compoundCode by remember(initial?.id) { mutableStateOf(initial?.compoundCode.orEmpty()) }
-    var temperature by remember(initial?.id) { mutableStateOf(initial?.testPieceCureTemperatureC.orEmpty()) }
-    var testPieceTime by remember(initial?.id) { mutableStateOf(initial?.testPieceCureTimeMinutes.orEmpty()) }
-    var customBlockTime by remember(initial?.id) { mutableStateOf(initial?.customBlockCureTimeMinutes.orEmpty()) }
-    var notes by remember(initial?.id) { mutableStateOf(initial?.notes.orEmpty()) }
+    var compoundCode by rememberSaveable(initial?.id) { mutableStateOf(initial?.compoundCode.orEmpty()) }
+    var temperature by rememberSaveable(initial?.id) { mutableStateOf(initial?.testPieceCureTemperatureC.orEmpty()) }
+    var testPieceTime by rememberSaveable(initial?.id) { mutableStateOf(initial?.testPieceCureTimeMinutes.orEmpty()) }
+    var customBlockTime by rememberSaveable(initial?.id) { mutableStateOf(initial?.customBlockCureTimeMinutes.orEmpty()) }
+    var notes by rememberSaveable(initial?.id) { mutableStateOf(initial?.notes.orEmpty()) }
 
     val normalizedCode = compoundCode.trim().uppercase(Locale.ROOT)
     val duplicateCode = hasDuplicateCompoundCode(compounds, normalizedCode, initial?.id)
     val canSave = normalizedCode.isNotEmpty() && !duplicateCode
+    val hasUnsavedChanges = compoundCode != initial?.compoundCode.orEmpty() ||
+        temperature != initial?.testPieceCureTemperatureC.orEmpty() ||
+        testPieceTime != initial?.testPieceCureTimeMinutes.orEmpty() ||
+        customBlockTime != initial?.customBlockCureTimeMinutes.orEmpty() ||
+        notes != initial?.notes.orEmpty()
 
     FullScreenEditorDialog(
         title = if (initial == null) "添加胶料" else "编辑胶料",
         canSave = canSave,
+        hasUnsavedChanges = hasUnsavedChanges,
         onDismiss = onDismiss,
         onSave = {
             onSave(
@@ -1390,18 +1416,18 @@ internal fun InspectionEditorDialog(
     onDismiss: () -> Unit,
     onSave: (InspectionFormData) -> Unit,
 ) {
-    var standardNumber by remember(initial?.id) { mutableStateOf(initial?.standardNumber.orEmpty()) }
-    var partNumbersText by remember(initial?.id) {
+    var standardNumber by rememberSaveable(initial?.id) { mutableStateOf(initial?.standardNumber.orEmpty()) }
+    var partNumbersText by rememberSaveable(initial?.id) {
         mutableStateOf(initial?.partNumbers?.joinToString("\n").orEmpty())
     }
-    var testPieceHardness by remember(initial?.id) { mutableStateOf(initial?.hardness?.testPieceHardness.orEmpty()) }
-    var blockHardness by remember(initial?.id) { mutableStateOf(initial?.hardness?.blockHardness.orEmpty()) }
-    var productHardness by remember(initial?.id) { mutableStateOf(initial?.hardness?.productHardness.orEmpty()) }
-    var productCategory by remember(initial?.id) { mutableStateOf(initial?.productCategory.orEmpty()) }
-    var color by remember(initial?.id) { mutableStateOf(initial?.color.orEmpty()) }
-    var tensileStrength by remember(initial?.id) { mutableStateOf(initial?.tensileStrength.orEmpty()) }
-    var elongation by remember(initial?.id) { mutableStateOf(initial?.elongation.orEmpty()) }
-    var notes by remember(initial?.id) { mutableStateOf(initial?.notes.orEmpty()) }
+    var testPieceHardness by rememberSaveable(initial?.id) { mutableStateOf(initial?.hardness?.testPieceHardness.orEmpty()) }
+    var blockHardness by rememberSaveable(initial?.id) { mutableStateOf(initial?.hardness?.blockHardness.orEmpty()) }
+    var productHardness by rememberSaveable(initial?.id) { mutableStateOf(initial?.hardness?.productHardness.orEmpty()) }
+    var productCategory by rememberSaveable(initial?.id) { mutableStateOf(initial?.productCategory.orEmpty()) }
+    var color by rememberSaveable(initial?.id) { mutableStateOf(initial?.color.orEmpty()) }
+    var tensileStrength by rememberSaveable(initial?.id) { mutableStateOf(initial?.tensileStrength.orEmpty()) }
+    var elongation by rememberSaveable(initial?.id) { mutableStateOf(initial?.elongation.orEmpty()) }
+    var notes by rememberSaveable(initial?.id) { mutableStateOf(initial?.notes.orEmpty()) }
 
     val normalizedStandardNumber = standardNumber.trim()
     val parsedPartNumbers = parsePartNumbers(partNumbersText)
@@ -1420,6 +1446,14 @@ internal fun InspectionEditorDialog(
     val canSave = parsedPartNumbers.isNotEmpty() &&
         !duplicateStandard &&
         partNumberConflicts.isEmpty()
+    val hasUnsavedChanges = standardNumber != initial?.standardNumber.orEmpty() ||
+        partNumbersText != initial?.partNumbers?.joinToString("\n").orEmpty() ||
+        testPieceHardness != initial?.hardness?.testPieceHardness.orEmpty() ||
+        blockHardness != initial?.hardness?.blockHardness.orEmpty() ||
+        productHardness != initial?.hardness?.productHardness.orEmpty() ||
+        productCategory != initial?.productCategory.orEmpty() || color != initial?.color.orEmpty() ||
+        tensileStrength != initial?.tensileStrength.orEmpty() || elongation != initial?.elongation.orEmpty() ||
+        notes != initial?.notes.orEmpty()
 
     fun submitForm() {
         onSave(
@@ -1444,6 +1478,7 @@ internal fun InspectionEditorDialog(
         title = if (initial == null) "添加检测标准" else "编辑检测标准",
         subtitle = compound.compoundCode,
         canSave = canSave,
+        hasUnsavedChanges = hasUnsavedChanges,
         onDismiss = onDismiss,
         onSave = { submitForm() },
     ) { contentPadding ->
@@ -1586,12 +1621,19 @@ private fun FullScreenEditorDialog(
     title: String,
     subtitle: String = "",
     canSave: Boolean,
+    hasUnsavedChanges: Boolean,
     onDismiss: () -> Unit,
     onSave: () -> Unit,
     content: @Composable (PaddingValues) -> Unit,
 ) {
+    var showDiscardConfirmation by rememberSaveable { mutableStateOf(false) }
+    fun requestDismiss() {
+        if (hasUnsavedChanges) showDiscardConfirmation = true else onDismiss()
+    }
+    BackHandler { requestDismiss() }
+
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = ::requestDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
@@ -1613,7 +1655,7 @@ private fun FullScreenEditorDialog(
                                 }
                             }
                         },
-                        navigationIcon = { TextButton(onClick = onDismiss) { Text("取消") } },
+                        navigationIcon = { TextButton(onClick = ::requestDismiss) { Text("取消") } },
                         actions = {
                             TextButton(onClick = onSave, enabled = canSave) { Text("保存") }
                         },
@@ -1621,6 +1663,21 @@ private fun FullScreenEditorDialog(
                 },
             ) { innerPadding -> content(innerPadding) }
         }
+    }
+    if (showDiscardConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDiscardConfirmation = false },
+            title = { Text("放弃未保存更改？") },
+            text = { Text("当前表单中的修改尚未保存，放弃后无法恢复。") },
+            confirmButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("放弃更改", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardConfirmation = false }) { Text("继续编辑") }
+            },
+        )
     }
 }
 

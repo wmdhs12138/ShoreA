@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.wmdhs.shorea"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.wmdhs.shorea"
@@ -42,7 +42,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
 
-    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material3:material3:1.5.0-alpha24")
     implementation("androidx.compose.animation:animation")
     implementation("androidx.datastore:datastore-preferences:1.2.1")
 
