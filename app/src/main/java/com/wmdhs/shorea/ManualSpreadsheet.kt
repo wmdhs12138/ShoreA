@@ -19,6 +19,11 @@ internal data class SpreadsheetImport(
     val skippedRowCount: Int,
 ) {
     val compoundCount: Int get() = manual.compounds.size
+    val baseRubberCount: Int get() = manual.compounds
+        .map(RubberCompound::baseRubber)
+        .filter(String::isNotBlank)
+        .distinctBy { it.uppercase(Locale.ROOT) }
+        .size
     val entryCount: Int get() = manual.inspectionEntries.size
     val partCount: Int get() = manual.totalPartAssociationCount
 }
@@ -49,9 +54,13 @@ internal fun decodeManualSpreadsheet(
         ?.let(::readSharedStrings)
         .orEmpty()
     val rows = readSheetRows(sheet, sharedStrings)
-    require(rows.size >= 2 && cell(rows[0], 0).contains("胶料号")) {
-        "表格格式不正确：第一列应为胶料号"
+    require(rows.size >= 2) { "表格格式不正确：缺少两行表头" }
+    val dataColumnOffset = when {
+        cell(rows[0], 0).contains("胶料号") -> 0
+        cell(rows[0], 1).contains("胶料号") -> 1
+        else -> error("表格格式不正确：第一列或第二列应为胶料号")
     }
+    val baseRubberColumn = if (dataColumnOffset == 1) 0 else null
 
     data class EntryBuilder(
         val standardNumber: String,
@@ -66,6 +75,7 @@ internal fun decodeManualSpreadsheet(
     )
     data class CompoundBuilder(
         val code: String,
+        var baseRubber: String = "",
         var temperature: String = "",
         var time: String = "",
         val entries: LinkedHashMap<String, EntryBuilder> = linkedMapOf(),
@@ -77,9 +87,9 @@ internal fun decodeManualSpreadsheet(
     rows.drop(2).forEach { row ->
         if (row.values.all(String::isBlank)) return@forEach
         sourceRows++
-        val code = cleanRequired(cell(row, 0))
-        val standard = cleanRequired(cell(row, 3))
-        val part = cleanRequired(cell(row, 4))
+        val code = cleanRequired(cell(row, dataColumnOffset))
+        val standard = cleanRequired(cell(row, 3 + dataColumnOffset))
+        val part = cleanRequired(cell(row, 4 + dataColumnOffset))
         if (code.isBlank() || standard.isBlank() || part.isBlank()) {
             skippedRows++
             return@forEach
@@ -89,11 +99,23 @@ internal fun decodeManualSpreadsheet(
         val compound = compoundBuilders.getOrPut(compoundKey) {
             CompoundBuilder(code = code)
         }
+        val baseRubber = baseRubberColumn
+            ?.let { cleanOptional(cell(row, it)) }
+            .orEmpty()
+        if (baseRubber.isNotBlank()) {
+            require(
+                compound.baseRubber.isBlank() ||
+                    compound.baseRubber.equals(baseRubber, ignoreCase = true),
+            ) {
+                "胶料 $code 对应多个基胶：${compound.baseRubber}、$baseRubber"
+            }
+            if (compound.baseRubber.isBlank()) compound.baseRubber = baseRubber
+        }
         compound.temperature = compound.temperature.ifBlank {
-            cleanOptional(cell(row, 1))
+            cleanOptional(cell(row, 1 + dataColumnOffset))
         }
         compound.time = compound.time.ifBlank {
-            cleanOptional(cell(row, 2))
+            cleanOptional(cell(row, 2 + dataColumnOffset))
         }
         val standardKey = standard.uppercase(Locale.ROOT)
         val inspectionEntry = compound.entries.getOrPut(standardKey) {
@@ -101,25 +123,25 @@ internal fun decodeManualSpreadsheet(
         }
         inspectionEntry.parts += part
         inspectionEntry.category = inspectionEntry.category.ifBlank {
-            cleanOptional(cell(row, 5))
+            cleanOptional(cell(row, 5 + dataColumnOffset))
         }
         inspectionEntry.color = inspectionEntry.color.ifBlank {
-            cleanOptional(cell(row, 6))
+            cleanOptional(cell(row, 6 + dataColumnOffset))
         }
         inspectionEntry.testPiece = inspectionEntry.testPiece.ifBlank {
-            cleanOptional(cell(row, 7))
+            cleanOptional(cell(row, 7 + dataColumnOffset))
         }
         inspectionEntry.block = inspectionEntry.block.ifBlank {
-            cleanOptional(cell(row, 8))
+            cleanOptional(cell(row, 8 + dataColumnOffset))
         }
         inspectionEntry.product = inspectionEntry.product.ifBlank {
-            cleanOptional(cell(row, 9))
+            cleanOptional(cell(row, 9 + dataColumnOffset))
         }
         inspectionEntry.tensile = inspectionEntry.tensile.ifBlank {
-            cleanOptional(cell(row, 10))
+            cleanOptional(cell(row, 10 + dataColumnOffset))
         }
         inspectionEntry.elongation = inspectionEntry.elongation.ifBlank {
-            cleanOptional(cell(row, 11))
+            cleanOptional(cell(row, 11 + dataColumnOffset))
         }
     }
     require(compoundBuilders.isNotEmpty()) { "表格中没有可导入的资料" }
@@ -133,6 +155,7 @@ internal fun decodeManualSpreadsheet(
         compounds += RubberCompound(
             id = compoundId,
             compoundCode = source.code,
+            baseRubber = source.baseRubber,
             testPieceCureTemperatureC = source.temperature,
             testPieceCureTimeMinutes = source.time,
         )
@@ -297,11 +320,11 @@ private fun worksheetXml(
 ): String {
     val rows = mutableListOf<List<String>>()
     rows += listOf(
-        "胶料号", "硫化条件试片", "", "标准号", "部品号", "产品类别",
-        "颜色", "性能", "", "", "", "",
+        "基胶", "胶料号", "硫化条件试片", "", "标准号", "部品号",
+        "产品类别", "颜色", "性能", "", "", "", "",
     )
     rows += listOf(
-        "", "温度/℃", "时间/min", "", "", "", "",
+        "", "", "温度/℃", "时间/min", "", "", "", "",
         "硬度片/A", "硬度块/A", "硬度产品/A", "拉伸强度/Mpa", "伸长率/%",
     )
     manual.inspectionEntries.forEach { entry ->
@@ -309,6 +332,7 @@ private fun worksheetXml(
             ?: error("导出时发现孤立检测标准 ${entry.id}")
         normalizePartNumbers(entry.partNumbers).forEach { part ->
             rows += listOf(
+                compound.baseRubber,
                 compound.compoundCode,
                 compound.testPieceCureTemperatureC,
                 compound.testPieceCureTimeMinutes,
@@ -332,7 +356,7 @@ private fun worksheetXml(
         }.joinToString("")
         "<row r=\"${rowIndex + 1}\">$cells</row>"
     }.joinToString("")
-    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:L${rows.size.coerceAtLeast(2)}"/><sheetViews><sheetView workbookViewId="0"/></sheetViews><cols><col min="1" max="12" width="18" customWidth="1"/></cols><sheetData>$body</sheetData></worksheet>"""
+    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:M${rows.size.coerceAtLeast(2)}"/><sheetViews><sheetView workbookViewId="0"/></sheetViews><cols><col min="1" max="13" width="18" customWidth="1"/></cols><sheetData>$body</sheetData></worksheet>"""
 }
 
 private fun columnName(index: Int): String {

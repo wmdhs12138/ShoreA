@@ -92,6 +92,7 @@ import kotlinx.coroutines.launch
 
 internal data class CompoundFormData(
     val compoundCode: String,
+    val baseRubber: String,
     val testPieceCureTemperatureC: String,
     val testPieceCureTimeMinutes: String,
     val customBlockCureTimeMinutes: String,
@@ -128,6 +129,7 @@ internal fun ManualTopBar(
     onImportExport: () -> Unit,
 ) {
     var sortMenuExpanded by remember { mutableStateOf(false) }
+    var viewMenuExpanded by remember { mutableStateOf(false) }
     val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     LaunchedEffect(searchActive) {
@@ -150,7 +152,7 @@ internal fun ManualTopBar(
                             modifier = Modifier.semantics { heading() },
                         )
                         Text(
-                            "$compoundCount 个胶料 · $entryCount 个检测标准 · 本地保存",
+                            "胶料 $compoundCount · 标准 $entryCount · 本地保存",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -181,6 +183,37 @@ internal fun ManualTopBar(
                             }
                         }
                     }
+                    Box {
+                        IconButton(
+                            enabled = actionsEnabled,
+                            modifier = Modifier.semantics {
+                                contentDescription = "视图，当前${viewMode.label}"
+                            },
+                            onClick = { viewMenuExpanded = true },
+                        ) { ManualTopBarIcon(ManualTopBarIconType.VIEW) }
+                        DropdownMenu(
+                            expanded = viewMenuExpanded,
+                            onDismissRequest = { viewMenuExpanded = false },
+                        ) {
+                            ManualViewMode.entries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.label) },
+                                    trailingIcon = if (option == viewMode) {
+                                        { Text("✓") }
+                                    } else {
+                                        null
+                                    },
+                                    modifier = Modifier.semantics {
+                                        selected = option == viewMode
+                                    },
+                                    onClick = {
+                                        onViewModeChange(option)
+                                        viewMenuExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
                     IconButton(
                         enabled = hasLoaded,
                         modifier = Modifier.semantics { contentDescription = "导入与导出" },
@@ -194,7 +227,7 @@ internal fun ManualTopBar(
                     onValueChange = onQueryChange,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                         .focusRequester(focusRequester),
-                    placeholder = { Text("搜索胶料号、标准号、部品号或硬度") },
+                    placeholder = { Text("搜索基胶、胶料号、标准号、部品号或硬度") },
                     trailingIcon = {
                         if (query.isNotEmpty()) IconButton(
                             onClick = onClearQuery,
@@ -204,15 +237,6 @@ internal fun ManualTopBar(
                     keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
                     keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { keyboard?.hide() }),
                     singleLine = true,
-                )
-            }
-            if (actionsEnabled) {
-                ExpressiveChoiceGroup(
-                    options = ManualViewMode.entries,
-                    selected = viewMode,
-                    label = { it.label },
-                    onSelected = onViewModeChange,
-                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                 )
             }
         }
@@ -275,6 +299,7 @@ private fun ManualTopBarIcon(
                             ),
                             size = androidx.compose.ui.geometry.Size(cellSize, cellSize),
                             cornerRadius = androidx.compose.ui.geometry.CornerRadius(gap, gap),
+                            style = Stroke(width = strokeWidth),
                         )
                     }
                 }
@@ -404,7 +429,7 @@ internal fun EmptyManualSearchState(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "未找到与“$query”相关的胶料号、标准号、部品号或硬度",
+                text = "未找到与“$query”相关的基胶、胶料号、标准号、部品号或硬度",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -680,11 +705,24 @@ private fun InspectionCompactCardContent(compound: RubberCompound, entry: Inspec
 
 @Composable
 private fun ListCardMetadata(compound: RubberCompound, entry: InspectionEntry, compact: Boolean) {
+    val compactMetadata = buildList {
+        add(compound.compoundCode)
+        compound.baseRubber.takeIf(String::isNotBlank)?.let { add(it) }
+        add("标准号 ${entry.standardNumber.ifBlank { "未填写" }}")
+    }.joinToString(" · ")
     Column(verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 7.dp)) {
         PartNumberList(entry.partNumbers, compact = compact)
-        if (compact) Text("${compound.compoundCode} · 标准号 ${entry.standardNumber.ifBlank { "未填写" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        else {
+        if (compact) {
+            Text(
+                text = compactMetadata,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        } else {
             HomeMetaLine("胶料号", compound.compoundCode)
+            if (compound.baseRubber.isNotBlank()) HomeMetaLine("基胶", compound.baseRubber)
             HomeMetaLine("标准号", entry.standardNumber.ifBlank { "未填写" })
         }
     }
@@ -703,6 +741,7 @@ private fun InspectionDetailedCardContent(
         PartNumberList(entry.partNumbers)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             HomeMetaLine("胶料号", compound.compoundCode)
+            if (compound.baseRubber.isNotBlank()) HomeMetaLine("基胶", compound.baseRubber)
             HomeMetaLine("标准号", entry.standardNumber.ifBlank { "未填写" })
             PrimaryHardnessDisplay(entry.effectiveHardness, compact = true)
         }
@@ -756,6 +795,14 @@ private fun EmptyCompoundHomeCard(
                 },
                 fontWeight = FontWeight.Bold,
             )
+            if (compound.baseRubber.isNotBlank()) {
+                Text(
+                    text = "基胶 · ${compound.baseRubber}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
             Text(
                 text = "尚未添加检测标准",
                 style = MaterialTheme.typography.bodyMedium,
@@ -1006,6 +1053,14 @@ internal fun CompoundDetailSheet(
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.semantics { heading() },
                         )
+                        if (compound.baseRubber.isNotBlank()) {
+                            Text(
+                                text = "基胶 · ${compound.baseRubber}",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                         Text(
                             text = "${entries.size} 个检测标准 · ${entries.sumOf { it.partNumbers.size }} 个部品关联",
                             style = MaterialTheme.typography.bodyMedium,
@@ -1304,6 +1359,7 @@ internal fun CompoundEditorDialog(
     onSave: (CompoundFormData) -> Unit,
 ) {
     var compoundCode by rememberSaveable(initial?.id) { mutableStateOf(initial?.compoundCode.orEmpty()) }
+    var baseRubber by rememberSaveable(initial?.id) { mutableStateOf(initial?.baseRubber.orEmpty()) }
     var temperature by rememberSaveable(initial?.id) { mutableStateOf(initial?.testPieceCureTemperatureC.orEmpty()) }
     var testPieceTime by rememberSaveable(initial?.id) { mutableStateOf(initial?.testPieceCureTimeMinutes.orEmpty()) }
     var customBlockTime by rememberSaveable(initial?.id) { mutableStateOf(initial?.customBlockCureTimeMinutes.orEmpty()) }
@@ -1313,6 +1369,7 @@ internal fun CompoundEditorDialog(
     val duplicateCode = hasDuplicateCompoundCode(compounds, normalizedCode, initial?.id)
     val canSave = normalizedCode.isNotEmpty() && !duplicateCode
     val hasUnsavedChanges = compoundCode != initial?.compoundCode.orEmpty() ||
+        baseRubber != initial?.baseRubber.orEmpty() ||
         temperature != initial?.testPieceCureTemperatureC.orEmpty() ||
         testPieceTime != initial?.testPieceCureTimeMinutes.orEmpty() ||
         customBlockTime != initial?.customBlockCureTimeMinutes.orEmpty() ||
@@ -1327,6 +1384,7 @@ internal fun CompoundEditorDialog(
             onSave(
                 CompoundFormData(
                     compoundCode = normalizedCode,
+                    baseRubber = baseRubber.trim(),
                     testPieceCureTemperatureC = temperature.trim(),
                     testPieceCureTimeMinutes = testPieceTime.trim(),
                     customBlockCureTimeMinutes = customBlockTime.trim(),
@@ -1340,7 +1398,7 @@ internal fun CompoundEditorDialog(
             contentPadding = PaddingValues(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            item { EditorSectionTitle("基本信息", "胶料号是手册的第一层级") }
+            item { EditorSectionTitle("基本信息", "胶料号与基胶用于识别和分类") }
             item {
                 OutlinedTextField(
                     value = compoundCode,
@@ -1350,6 +1408,16 @@ internal fun CompoundEditorDialog(
                     placeholder = { Text("例如：P01331201") },
                     supportingText = { if (duplicateCode) Text("该胶料号已存在，请编辑原记录") },
                     isError = duplicateCode,
+                    singleLine = true,
+                )
+            }
+            item {
+                OutlinedTextField(
+                    value = baseRubber,
+                    onValueChange = { baseRubber = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("基胶（胶种）") },
+                    placeholder = { Text("例如：三元乙丙橡胶") },
                     singleLine = true,
                 )
             }

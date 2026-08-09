@@ -112,6 +112,9 @@ internal fun mergeManualBackup(
             compoundCode = currentCompound.compoundCode.ifBlank {
                 importedCompound.compoundCode.trim()
             },
+            baseRubber = currentCompound.baseRubber.ifBlank {
+                importedCompound.baseRubber.trim()
+            },
             testPieceCureTemperatureC = currentCompound.testPieceCureTemperatureC
                 .ifBlank { importedCompound.testPieceCureTemperatureC },
             testPieceCureTimeMinutes = currentCompound.testPieceCureTimeMinutes

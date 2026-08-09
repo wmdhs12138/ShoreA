@@ -47,6 +47,7 @@ internal data class HardnessManual(
 internal data class RubberCompound(
     val id: Long,
     val compoundCode: String,
+    val baseRubber: String = "",
     val testPieceCureTemperatureC: String = "",
     val testPieceCureTimeMinutes: String = "",
     val customBlockCureTimeMinutes: String = "",
@@ -345,6 +346,7 @@ internal fun RubberCompound.matchesCompoundFields(query: String): Boolean {
         return true
     }
     return compoundCode.contains(query, ignoreCase = true) ||
+        baseRubber.contains(query, ignoreCase = true) ||
         testPieceCureTemperatureC.contains(query, ignoreCase = true) ||
         testPieceCureTimeMinutes.contains(query, ignoreCase = true) ||
         blockCureTimeMinutes.contains(query, ignoreCase = true) ||

@@ -480,10 +480,12 @@ private fun HardnessManualHome() {
                 onSave = { form ->
                     val updatedCompound = if (existing == null) RubberCompound(
                         id = nextEntityId(manual.compounds.map(RubberCompound::id)), compoundCode = form.compoundCode.trim(),
-                        testPieceCureTemperatureC = form.testPieceCureTemperatureC, testPieceCureTimeMinutes = form.testPieceCureTimeMinutes,
+                        baseRubber = form.baseRubber, testPieceCureTemperatureC = form.testPieceCureTemperatureC,
+                        testPieceCureTimeMinutes = form.testPieceCureTimeMinutes,
                         customBlockCureTimeMinutes = form.customBlockCureTimeMinutes, notes = form.notes,
-                    ) else existing.copy(compoundCode = form.compoundCode.trim(), testPieceCureTemperatureC = form.testPieceCureTemperatureC,
-                        testPieceCureTimeMinutes = form.testPieceCureTimeMinutes, customBlockCureTimeMinutes = form.customBlockCureTimeMinutes, notes = form.notes)
+                    ) else existing.copy(compoundCode = form.compoundCode.trim(), baseRubber = form.baseRubber,
+                        testPieceCureTemperatureC = form.testPieceCureTemperatureC, testPieceCureTimeMinutes = form.testPieceCureTimeMinutes,
+                        customBlockCureTimeMinutes = form.customBlockCureTimeMinutes, notes = form.notes)
                     if (existing == null) { persist(manual.copy(compounds = manual.compounds + updatedCompound)); selectedCompoundId = updatedCompound.id }
                     else updateCompound(updatedCompound)
                     compoundEditorVisible = false

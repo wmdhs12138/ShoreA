@@ -258,6 +258,7 @@ private fun migrateV1(legacyCompounds: List<LegacyCompoundV1>): HardnessManual {
 private fun encodeCompound(compound: RubberCompound): JSONObject = JSONObject()
     .put("id", compound.id)
     .put("compoundCode", compound.compoundCode)
+    .put("baseRubber", compound.baseRubber)
     .put("testPieceCureTemperatureC", compound.testPieceCureTemperatureC)
     .put("testPieceCureTimeMinutes", compound.testPieceCureTimeMinutes)
     .put("customBlockCureTimeMinutes", compound.customBlockCureTimeMinutes)
@@ -284,6 +285,7 @@ private fun encodeInspectionEntry(entry: InspectionEntry): JSONObject = JSONObje
 private fun decodeCompound(json: JSONObject): RubberCompound = RubberCompound(
     id = requiredId(json, "胶料"),
     compoundCode = json.optString("compoundCode", "").trim(),
+    baseRubber = json.optString("baseRubber", "").trim(),
     testPieceCureTemperatureC = json.optString("testPieceCureTemperatureC", "").trim(),
     testPieceCureTimeMinutes = json.optString("testPieceCureTimeMinutes", "").trim(),
     customBlockCureTimeMinutes = json.optString("customBlockCureTimeMinutes", "").trim(),

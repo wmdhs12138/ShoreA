@@ -66,7 +66,7 @@ internal fun ManualBackupActionsDialog(
                 }
                 val enabled = operation == null && !pickerActive
                 FileActionCard("导入 Excel", "批量录入或合并表格资料", enabled, onImportSpreadsheet)
-                FileActionCard("导出 Excel", "用于批量检查和编辑 12 列资料", enabled && manual.compounds.isNotEmpty(), onExportSpreadsheet)
+                FileActionCard("导出 Excel", "用于批量检查和编辑 13 列资料", enabled && manual.compounds.isNotEmpty(), onExportSpreadsheet)
                 FileActionCard("导入 JSON 备份", "完整恢复或合并应用资料", enabled, onImportBackup)
                 FileActionCard("导出 JSON 备份", "换机与灾备的完整副本", enabled && manual.compounds.isNotEmpty(), onExportBackup)
             }
@@ -112,7 +112,12 @@ internal fun ManualSpreadsheetImportPreviewDialog(
     onDismiss: () -> Unit,
 ) = ImportPreviewDialog(
     title = "确认导入 Excel",
-    summary = "${spreadsheet.compoundCount} 个胶料 · ${spreadsheet.entryCount} 个检测标准 · ${spreadsheet.partCount} 个部品关联",
+    summary = buildList {
+        add("${spreadsheet.compoundCount} 个胶料")
+        if (spreadsheet.baseRubberCount > 0) add("${spreadsheet.baseRubberCount} 种基胶")
+        add("${spreadsheet.entryCount} 个检测标准")
+        add("${spreadsheet.partCount} 个部品关联")
+    }.joinToString(" · "),
     detail = if (spreadsheet.skippedRowCount == 0) "${spreadsheet.sourceRowCount} 行全部可导入" else "${spreadsheet.sourceRowCount} 行中有 ${spreadsheet.skippedRowCount} 行缺少关键字段，已跳过",
     onMerge = onMerge, onReplace = onReplace, onDismiss = onDismiss,
 )
