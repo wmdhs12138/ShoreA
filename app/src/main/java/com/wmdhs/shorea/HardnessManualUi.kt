@@ -2,7 +2,6 @@ package com.wmdhs.shorea
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,7 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -67,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
@@ -456,24 +455,21 @@ internal fun SwipeManualHomeItem(
     onDeleteEmptyCompound: (RubberCompound) -> Unit,
 ) {
     key(item.stableKey) {
-        val coroutineScope = rememberCoroutineScope()
         val actionWidthPx = with(LocalDensity.current) { 88.dp.toPx() }
         var offsetPx by remember { mutableFloatStateOf(0f) }
-        var deleteRequested by remember { mutableStateOf(false) }
         val revealFraction = (-offsetPx / actionWidthPx).coerceIn(0f, 1f)
         val cardCornerRadius = if (viewMode == ManualViewMode.COMPACT) 20.dp else 24.dp
-        val itemShape = RoundedCornerShape(cardCornerRadius)
-        val cardShape = RoundedCornerShape(
-            topStart = cardCornerRadius,
-            topEnd = cardCornerRadius * (1f - revealFraction),
-            bottomEnd = cardCornerRadius * (1f - revealFraction),
-            bottomStart = cardCornerRadius,
-        )
-        val highlightAlpha by animateFloatAsState(
-            targetValue = if (highlighted) 1f else 0f,
-            animationSpec = androidx.compose.animation.core.spring(),
-            label = "restored-item-highlight",
-        )
+        val itemShape = remember(cardCornerRadius) { RoundedCornerShape(cardCornerRadius) }
+        val cardShape = if (offsetPx == 0f) {
+            itemShape
+        } else {
+            RoundedCornerShape(
+                topStart = cardCornerRadius,
+                topEnd = cardCornerRadius * (1f - revealFraction),
+                bottomEnd = cardCornerRadius * (1f - revealFraction),
+                bottomStart = cardCornerRadius,
+            )
+        }
         val draggableState = rememberDraggableState { delta ->
             offsetPx = (offsetPx + delta).coerceIn(-actionWidthPx, 0f)
         }
@@ -493,57 +489,65 @@ internal fun SwipeManualHomeItem(
             if (offsetPx != target) animateOffsetTo(target)
         }
 
+        val highlightedModifier = if (highlighted) {
+            Modifier.border(
+                width = 2.dp,
+                color = MaterialTheme.colorScheme.primary,
+                shape = itemShape,
+            )
+        } else {
+            Modifier
+        }
         Box(
             modifier = modifier.fillMaxWidth()
-                .border(
-                    width = 2.dp,
-                    color = MaterialTheme.colorScheme.primary.copy(
-                        alpha = highlightAlpha,
-                    ),
-                    shape = itemShape,
-                )
+                .then(highlightedModifier)
                 .clip(itemShape),
         ) {
-            Box(
-                modifier = Modifier.matchParentSize(),
-                contentAlignment = Alignment.CenterEnd,
-            ) {
-                Surface(
-                    modifier = Modifier.fillMaxHeight()
-                        .width(88.dp)
-                        .semantics {
-                            if (!revealed) invisibleToUser()
-                            role = Role.Button
-                            contentDescription = when (item) {
-                                is ManualHomeItem.Inspection -> "删除检测标准 ${item.entry.standardNumber}，危险操作"
-                                is ManualHomeItem.EmptyCompound -> "删除胶料 ${item.compound.compoundCode}，危险操作"
-                            }
-                        }
-                        .clickable(enabled = revealed && !deleteRequested) {
-                            deleteRequested = true
-                            coroutineScope.launch {
-                                // 删除前先收起操作区。撤回时条目会以初始位置重新进入，
-                                // 不会继承“已打开”状态。
-                                animateOffsetTo(0f)
-                                when (item) {
-                                    is ManualHomeItem.Inspection -> {
-                                        onDeleteInspection(item.entry)
-                                    }
-                                    is ManualHomeItem.EmptyCompound -> {
-                                        onDeleteEmptyCompound(item.compound)
-                                    }
-                                }
-                                deleteRequested = false
-                            }
-                        },
-                    color = MaterialTheme.colorScheme.errorContainer,
+            // 关闭状态不组合被卡片完全遮住的删除层，降低Lazy列表新条目进入时的成本。
+            if (offsetPx < 0f || revealed) {
+                val coroutineScope = rememberCoroutineScope()
+                var deleteRequested by remember { mutableStateOf(false) }
+                Box(
+                    modifier = Modifier.matchParentSize(),
+                    contentAlignment = Alignment.CenterEnd,
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "删除",
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            fontWeight = FontWeight.Bold,
-                        )
+                    Surface(
+                        modifier = Modifier.fillMaxHeight()
+                            .width(88.dp)
+                            .semantics {
+                                if (!revealed) invisibleToUser()
+                                role = Role.Button
+                                contentDescription = when (item) {
+                                    is ManualHomeItem.Inspection -> "删除检测标准 ${item.entry.standardNumber}，危险操作"
+                                    is ManualHomeItem.EmptyCompound -> "删除胶料 ${item.compound.compoundCode}，危险操作"
+                                }
+                            }
+                            .clickable(enabled = revealed && !deleteRequested) {
+                                deleteRequested = true
+                                coroutineScope.launch {
+                                    // 删除前先收起操作区。撤回时条目会以初始位置重新进入，
+                                    // 不会继承“已打开”状态。
+                                    animateOffsetTo(0f)
+                                    when (item) {
+                                        is ManualHomeItem.Inspection -> {
+                                            onDeleteInspection(item.entry)
+                                        }
+                                        is ManualHomeItem.EmptyCompound -> {
+                                            onDeleteEmptyCompound(item.compound)
+                                        }
+                                    }
+                                    deleteRequested = false
+                                }
+                            },
+                        color = MaterialTheme.colorScheme.errorContainer,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "删除",
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
                     }
                 }
             }
@@ -681,30 +685,32 @@ private fun InspectionAnswerHeader(
     compound: RubberCompound,
     entry: InspectionEntry,
 ) {
-    val fontScale = LocalDensity.current.fontScale
+    val density = LocalDensity.current
+    val windowWidth = with(density) { LocalWindowInfo.current.containerSize.width.toDp() }
+    // LIST/DETAILED均为单列：用窗口宽度一次决定头部布局，避免每张卡使用
+    // BoxWithConstraints触发额外的子组合与测量。
+    val answerWidth = windowWidth - 68.dp
+    val stacked = answerWidth < 300.dp || density.fontScale >= 1.3f
     Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
-        BoxWithConstraints {
-            val stacked = maxWidth < 300.dp || fontScale >= 1.3f
-            if (stacked) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ListPartNumberHeadline(entry.partNumbers)
-                    ListHardnessAnswer(
-                        hardness = entry.effectiveHardness,
-                        modifier = Modifier.align(Alignment.End),
-                    )
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    ListPartNumberHeadline(
-                        partNumbers = entry.partNumbers,
-                        modifier = Modifier.weight(1f),
-                    )
-                    ListHardnessAnswer(entry.effectiveHardness)
-                }
+        if (stacked) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ListPartNumberHeadline(entry.partNumbers)
+                ListHardnessAnswer(
+                    hardness = entry.effectiveHardness,
+                    modifier = Modifier.align(Alignment.End),
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                ListPartNumberHeadline(
+                    partNumbers = entry.partNumbers,
+                    modifier = Modifier.weight(1f),
+                )
+                ListHardnessAnswer(entry.effectiveHardness)
             }
         }
         ListMaterialIdentity(compound)
@@ -724,8 +730,7 @@ private fun ListPartNumberHeadline(
     partNumbers: List<String>,
     modifier: Modifier = Modifier,
 ) {
-    val normalized = normalizePartNumbers(partNumbers)
-    if (normalized.isEmpty()) {
+    if (partNumbers.isEmpty()) {
         Text(
             text = "未关联部品号",
             modifier = modifier,
@@ -737,12 +742,12 @@ private fun ListPartNumberHeadline(
     }
     FlowRow(
         modifier = modifier.clearAndSetSemantics {
-            contentDescription = "部品号 ${normalized.joinToString("、")}"
+            contentDescription = "部品号 ${partNumbers.joinToString("、")}"
         },
         horizontalArrangement = Arrangement.spacedBy(9.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        normalized.forEach { partNumber ->
+        partNumbers.forEach { partNumber ->
             Text(
                 text = partNumber,
                 style = MaterialTheme.typography.titleLarge,
@@ -844,34 +849,35 @@ private fun InspectionCompactCardContent(
     entry: InspectionEntry,
     searchQuery: String,
 ) {
-    val fontScale = LocalDensity.current.fontScale
+    val density = LocalDensity.current
+    val windowWidth = with(density) { LocalWindowInfo.current.containerSize.width.toDp() }
+    // 默认双列：扣除网格边距、列间距与卡片内边距后即可得到头部可用宽度。
+    val compactAnswerWidth = (windowWidth - 34.dp) / 2 - 24.dp
+    val stacked = compactAnswerWidth < 300.dp || density.fontScale >= 1.3f
     val prioritizedPartNumbers = prioritizePartNumbers(entry.partNumbers, searchQuery)
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        BoxWithConstraints {
-            val stacked = maxWidth < 300.dp || fontScale >= 1.3f
-            if (stacked) {
-                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    CompactPartNumberHeadline(prioritizedPartNumbers)
-                    ListHardnessAnswer(
-                        hardness = entry.effectiveHardness,
-                        modifier = Modifier.align(Alignment.End),
-                    )
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CompactPartNumberHeadline(
-                        partNumbers = prioritizedPartNumbers,
-                        modifier = Modifier.weight(1f),
-                    )
-                    ListHardnessAnswer(entry.effectiveHardness)
-                }
+        if (stacked) {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                CompactPartNumberHeadline(prioritizedPartNumbers)
+                ListHardnessAnswer(
+                    hardness = entry.effectiveHardness,
+                    modifier = Modifier.align(Alignment.End),
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CompactPartNumberHeadline(
+                    partNumbers = prioritizedPartNumbers,
+                    modifier = Modifier.weight(1f),
+                )
+                ListHardnessAnswer(entry.effectiveHardness)
             }
         }
         ListMaterialIdentity(compound)
@@ -917,11 +923,15 @@ private fun CompactPartNumberHeadline(
                 MaterialTheme.colorScheme.onSurface
             },
             fontWeight = FontWeight.Bold,
-            autoSize = TextAutoSize.StepBased(
-                minFontSize = 14.sp,
-                maxFontSize = MaterialTheme.typography.titleLarge.fontSize,
-                stepSize = 1.sp,
-            ),
+            autoSize = if (primaryPartNumber != null && primaryPartNumber.length > 12) {
+                TextAutoSize.StepBased(
+                    minFontSize = 14.sp,
+                    maxFontSize = MaterialTheme.typography.titleLarge.fontSize,
+                    stepSize = 1.sp,
+                )
+            } else {
+                null
+            },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -939,12 +949,11 @@ private fun CompactPartNumberHeadline(
 }
 
 private fun prioritizePartNumbers(partNumbers: List<String>, searchQuery: String): List<String> {
-    val normalized = normalizePartNumbers(partNumbers)
     val query = searchQuery.trim()
-    if (query.isEmpty()) return normalized
-    val matchingPartNumber = normalized.firstOrNull { it.contains(query, ignoreCase = true) }
-        ?: return normalized
-    return listOf(matchingPartNumber) + normalized.filterNot { it == matchingPartNumber }
+    if (query.isEmpty()) return partNumbers
+    val matchingPartNumber = partNumbers.firstOrNull { it.contains(query, ignoreCase = true) }
+        ?: return partNumbers
+    return listOf(matchingPartNumber) + partNumbers.filterNot { it == matchingPartNumber }
 }
 
 @Composable

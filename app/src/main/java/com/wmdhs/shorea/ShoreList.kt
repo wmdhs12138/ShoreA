@@ -1,5 +1,6 @@
 package com.wmdhs.shorea
 
+import androidx.compose.runtime.Immutable
 import java.math.BigDecimal
 import java.util.Locale
 
@@ -19,6 +20,7 @@ internal enum class ManualViewMode(
     DETAILED("详细"),
 }
 
+@Immutable
 internal data class HardnessManual(
     val compounds: List<RubberCompound> = emptyList(),
     val inspectionEntries: List<InspectionEntry> = emptyList(),
@@ -44,6 +46,7 @@ internal data class HardnessManual(
     )
 }
 
+@Immutable
 internal data class RubberCompound(
     val id: Long,
     val compoundCode: String,
@@ -53,22 +56,18 @@ internal data class RubberCompound(
     val customBlockCureTimeMinutes: String = "",
     val notes: String = "",
 ) {
-    val blockCureTimeMinutes: String
-        get() {
-            if (customBlockCureTimeMinutes.isNotBlank()) {
-                return customBlockCureTimeMinutes
-            }
+    val blockCureTimeMinutes: String = if (customBlockCureTimeMinutes.isNotBlank()) {
+        customBlockCureTimeMinutes
+    } else {
+        testPieceCureTimeMinutes.toDoubleOrNull()
+            ?.let { compactNumber(it * 2.0) }
+            .orEmpty()
+    }
 
-            val testPieceMinutes = testPieceCureTimeMinutes.toDoubleOrNull()
-                ?: return ""
-
-            return compactNumber(testPieceMinutes * 2.0)
-        }
-
-    val usesCustomBlockCureTime: Boolean
-        get() = customBlockCureTimeMinutes.isNotBlank()
+    val usesCustomBlockCureTime: Boolean = customBlockCureTimeMinutes.isNotBlank()
 }
 
+@Immutable
 internal data class InspectionEntry(
     val id: Long,
     val compoundId: Long,
@@ -81,14 +80,12 @@ internal data class InspectionEntry(
     val elongation: String = "",
     val notes: String = "",
 ) {
-    val partNumberSortKey: String
-        get() = normalizePartNumbers(partNumbers)
-            .firstOrNull()
-            ?.uppercase(Locale.ROOT)
-            .orEmpty()
+    val partNumberSortKey: String = partNumbers
+        .firstOrNull()
+        ?.uppercase(Locale.ROOT)
+        .orEmpty()
 
-    val effectiveHardness: EffectiveHardness?
-        get() = hardness.effectiveHardness
+    val effectiveHardness: EffectiveHardness? = hardness.effectiveHardness
 
     fun matches(query: String): Boolean {
         if (query.isBlank()) {
@@ -108,43 +105,39 @@ internal data class InspectionEntry(
     }
 }
 
+@Immutable
 internal data class HardnessSet(
     val testPieceHardness: String = "",
     val blockHardness: String = "",
     val productHardness: String = "",
 ) {
-    val effectiveHardness: EffectiveHardness?
-        get() {
-            val candidate = when {
-                blockHardness.isNotBlank() -> {
-                    blockHardness to HardnessSource.BLOCK_STANDARD
-                }
-
-                productHardness.isNotBlank() -> {
-                    productHardness to HardnessSource.PRODUCT_STANDARD
-                }
-
-                testPieceHardness.isNotBlank() -> {
-                    testPieceHardness to HardnessSource.TEST_PIECE
-                }
-
-                else -> return null
+    val effectiveHardness: EffectiveHardness? = run {
+        val candidate = when {
+            blockHardness.isNotBlank() -> {
+                blockHardness to HardnessSource.BLOCK_STANDARD
             }
-            val rawValue = candidate.first.trim()
-            return EffectiveHardness(
+
+            productHardness.isNotBlank() -> {
+                productHardness to HardnessSource.PRODUCT_STANDARD
+            }
+
+            testPieceHardness.isNotBlank() -> {
+                testPieceHardness to HardnessSource.TEST_PIECE
+            }
+
+            else -> null
+        }
+        candidate?.let { (value, source) ->
+            val rawValue = value.trim()
+            EffectiveHardness(
                 rawValue = rawValue,
                 numericValue = extractHardnessSortValue(rawValue),
-                source = candidate.second,
+                source = source,
             )
         }
+    }
 
-    fun normalized(): HardnessSet = copy(
-        testPieceHardness = testPieceHardness.trim(),
-        blockHardness = blockHardness.trim(),
-        productHardness = productHardness.trim(),
-    )
-
-    fun allValues(): List<Pair<HardnessSource, String>> = buildList {
+    private val values: List<Pair<HardnessSource, String>> = buildList {
         testPieceHardness.trim().takeIf(String::isNotEmpty)?.let {
             add(HardnessSource.TEST_PIECE to it)
         }
@@ -155,6 +148,14 @@ internal data class HardnessSet(
             add(HardnessSource.PRODUCT_STANDARD to it)
         }
     }
+
+    fun normalized(): HardnessSet = copy(
+        testPieceHardness = testPieceHardness.trim(),
+        blockHardness = blockHardness.trim(),
+        productHardness = productHardness.trim(),
+    )
+
+    fun allValues(): List<Pair<HardnessSource, String>> = values
 }
 
 internal enum class HardnessSource {
@@ -170,6 +171,7 @@ internal val HardnessSource.label: String
         HardnessSource.PRODUCT_STANDARD -> "产品"
     }
 
+@Immutable
 internal data class EffectiveHardness(
     val rawValue: String,
     val numericValue: Double?,
@@ -205,6 +207,7 @@ internal fun normalizePartNumbers(values: Iterable<String>): List<String> {
         )
 }
 
+@Immutable
 internal sealed interface ManualHomeItem {
     val stableKey: String
 
