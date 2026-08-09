@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,6 +34,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -73,6 +75,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.invisibleToUser
 import androidx.compose.ui.semantics.role
@@ -610,7 +613,6 @@ private fun ManualHomeCard(
         )
         is ManualHomeItem.EmptyCompound -> EmptyCompoundHomeCard(
             compound = item.compound,
-            viewMode = viewMode,
             shape = shape,
             onOpen = onOpen,
         )
@@ -644,6 +646,7 @@ private fun InspectionHomeCard(
             ManualViewMode.COMPACT -> InspectionCompactCardContent(
                 compound = compound,
                 entry = entry,
+                searchQuery = searchQuery,
             )
             ManualViewMode.DETAILED -> InspectionDetailedCardContent(
                 compound = compound,
@@ -660,72 +663,288 @@ private fun InspectionListCardContent(
     entry: InspectionEntry,
     searchQuery: String,
 ) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(11.dp),
+    ) {
+        InspectionAnswerHeader(compound = compound, entry = entry)
+        SearchEntryHint(
+            entry = entry,
+            query = searchQuery,
+            includeHiddenHardness = true,
+        )
+    }
+}
+
+@Composable
+private fun InspectionAnswerHeader(
+    compound: RubberCompound,
+    entry: InspectionEntry,
+) {
     val fontScale = LocalDensity.current.fontScale
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
         BoxWithConstraints {
-            val stacked = maxWidth < 400.dp || fontScale >= 1.3f
+            val stacked = maxWidth < 300.dp || fontScale >= 1.3f
             if (stacked) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ListCardMetadata(compound, entry, compact = false)
-                    PrimaryHardnessDisplay(entry.effectiveHardness, compact = true)
+                    ListPartNumberHeadline(entry.partNumbers)
+                    ListHardnessAnswer(
+                        hardness = entry.effectiveHardness,
+                        modifier = Modifier.align(Alignment.End),
+                    )
                 }
             } else {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.Top) {
-                    Column(modifier = Modifier.weight(1f)) { ListCardMetadata(compound, entry, compact = false) }
-                    PrimaryHardnessDisplay(entry.effectiveHardness, compact = true)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    ListPartNumberHeadline(
+                        partNumbers = entry.partNumbers,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ListHardnessAnswer(entry.effectiveHardness)
                 }
             }
         }
-        SecondaryHardnessRow(entry.hardness, entry.effectiveHardness?.source, compact = true)
-        SearchEntryHint(entry, searchQuery)
+        ListMaterialIdentity(compound)
+        Text(
+            text = "依据 · ${entry.standardNumber.ifBlank { "未填写标准号" }}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun InspectionCompactCardContent(compound: RubberCompound, entry: InspectionEntry) {
-    val fontScale = LocalDensity.current.fontScale
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        BoxWithConstraints {
-            val stacked = maxWidth < 400.dp || fontScale >= 1.3f
-            if (stacked) {
-                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    ListCardMetadata(compound, entry, compact = true)
-                    PrimaryHardnessDisplay(entry.effectiveHardness, compact = true)
-                }
-            } else {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-                    Column(modifier = Modifier.weight(1f)) { ListCardMetadata(compound, entry, compact = true) }
-                    PrimaryHardnessDisplay(entry.effectiveHardness, compact = true)
-                }
-            }
-        }
-        SecondaryHardnessRow(entry.hardness, entry.effectiveHardness?.source, compact = true)
+private fun ListPartNumberHeadline(
+    partNumbers: List<String>,
+    modifier: Modifier = Modifier,
+) {
+    val normalized = normalizePartNumbers(partNumbers)
+    if (normalized.isEmpty()) {
+        Text(
+            text = "未关联部品号",
+            modifier = modifier,
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Bold,
+        )
+        return
     }
-}
-
-@Composable
-private fun ListCardMetadata(compound: RubberCompound, entry: InspectionEntry, compact: Boolean) {
-    val compactMetadata = buildList {
-        add(compound.compoundCode)
-        compound.baseRubber.takeIf(String::isNotBlank)?.let { add(it) }
-        add("标准号 ${entry.standardNumber.ifBlank { "未填写" }}")
-    }.joinToString(" · ")
-    Column(verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 7.dp)) {
-        PartNumberList(entry.partNumbers, compact = compact)
-        if (compact) {
+    FlowRow(
+        modifier = modifier.clearAndSetSemantics {
+            contentDescription = "部品号 ${normalized.joinToString("、")}"
+        },
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        normalized.forEach { partNumber ->
             Text(
-                text = compactMetadata,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
+                text = partNumber,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-        } else {
-            HomeMetaLine("胶料号", compound.compoundCode)
-            if (compound.baseRubber.isNotBlank()) HomeMetaLine("基胶", compound.baseRubber)
-            HomeMetaLine("标准号", entry.standardNumber.ifBlank { "未填写" })
         }
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ListMaterialIdentity(compound: RubberCompound) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().clearAndSetSemantics {
+            contentDescription = buildString {
+                append("胶料号 ${compound.compoundCode}")
+                if (compound.baseRubber.isNotBlank()) append("；基胶 ${compound.baseRubber}")
+            }
+        },
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = compound.compoundCode,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        if (compound.baseRubber.isNotBlank()) {
+            Surface(
+                shape = RoundedCornerShape(7.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ) {
+                Text(
+                    text = compound.baseRubber,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ListHardnessAnswer(
+    hardness: EffectiveHardness?,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(10.dp),
+        color = if (hardness == null) {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        } else {
+            MaterialTheme.colorScheme.primaryContainer
+        },
+        contentColor = if (hardness == null) {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        } else {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        },
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (hardness == null) {
+                Text(
+                    text = "未设硬度",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            } else {
+                Text(
+                    text = hardness.source.label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+                HardnessValueDisplay(
+                    value = hardness.rawValue,
+                    compact = true,
+                    accent = true,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InspectionCompactCardContent(
+    compound: RubberCompound,
+    entry: InspectionEntry,
+    searchQuery: String,
+) {
+    val fontScale = LocalDensity.current.fontScale
+    val prioritizedPartNumbers = prioritizePartNumbers(entry.partNumbers, searchQuery)
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        BoxWithConstraints {
+            val stacked = maxWidth < 300.dp || fontScale >= 1.3f
+            if (stacked) {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    CompactPartNumberHeadline(prioritizedPartNumbers)
+                    ListHardnessAnswer(
+                        hardness = entry.effectiveHardness,
+                        modifier = Modifier.align(Alignment.End),
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CompactPartNumberHeadline(
+                        partNumbers = prioritizedPartNumbers,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ListHardnessAnswer(entry.effectiveHardness)
+                }
+            }
+        }
+        ListMaterialIdentity(compound)
+        Text(
+            text = "依据 · ${entry.standardNumber.ifBlank { "未填写标准号" }}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        SearchEntryHint(
+            entry = entry,
+            query = searchQuery,
+            includeHiddenHardness = true,
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CompactPartNumberHeadline(
+    partNumbers: List<String>,
+    modifier: Modifier = Modifier,
+) {
+    val primaryPartNumber = partNumbers.firstOrNull()
+    FlowRow(
+        modifier = modifier.clearAndSetSemantics {
+            contentDescription = if (partNumbers.isEmpty()) {
+                "未关联部品号"
+            } else {
+                "部品号 ${partNumbers.joinToString("、")}"
+            }
+        },
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        Text(
+            text = primaryPartNumber ?: "未关联部品号",
+            style = MaterialTheme.typography.titleLarge,
+            color = if (primaryPartNumber == null) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+            fontWeight = FontWeight.Bold,
+            autoSize = TextAutoSize.StepBased(
+                minFontSize = 14.sp,
+                maxFontSize = MaterialTheme.typography.titleLarge.fontSize,
+                stepSize = 1.sp,
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (partNumbers.size > 1) {
+            Text(
+                text = "+${partNumbers.size - 1}",
+                modifier = Modifier.padding(top = 5.dp),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+private fun prioritizePartNumbers(partNumbers: List<String>, searchQuery: String): List<String> {
+    val normalized = normalizePartNumbers(partNumbers)
+    val query = searchQuery.trim()
+    if (query.isEmpty()) return normalized
+    val matchingPartNumber = normalized.firstOrNull { it.contains(query, ignoreCase = true) }
+        ?: return normalized
+    return listOf(matchingPartNumber) + normalized.filterNot { it == matchingPartNumber }
 }
 
 @Composable
@@ -734,43 +953,121 @@ private fun InspectionDetailedCardContent(
     entry: InspectionEntry,
     searchQuery: String,
 ) {
+    val otherHardnessValues = entry.hardness.allValues().filter {
+        it.first != entry.effectiveHardness?.source
+    }
+    val inspectionFacts = buildList {
+        entry.productCategory.takeIf(String::isNotBlank)?.let { add("产品类别" to it) }
+        entry.color.takeIf(String::isNotBlank)?.let { add("颜色" to it) }
+        entry.tensileStrength.takeIf(String::isNotBlank)?.let { add("拉伸强度" to it) }
+        entry.elongation.takeIf(String::isNotBlank)?.let { add("伸长率" to it) }
+    }
+    val hasCureCondition = compound.testPieceCureTemperatureC.isNotBlank() ||
+        compound.testPieceCureTimeMinutes.isNotBlank() ||
+        compound.blockCureTimeMinutes.isNotBlank()
+    val hasNotes = entry.notes.isNotBlank() || compound.notes.isNotBlank()
+    val hasAdditionalDetails = otherHardnessValues.isNotEmpty() ||
+        hasCureCondition || inspectionFacts.isNotEmpty() || hasNotes
+
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(11.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(13.dp),
     ) {
-        PartNumberList(entry.partNumbers)
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            HomeMetaLine("胶料号", compound.compoundCode)
-            if (compound.baseRubber.isNotBlank()) HomeMetaLine("基胶", compound.baseRubber)
-            HomeMetaLine("标准号", entry.standardNumber.ifBlank { "未填写" })
-            PrimaryHardnessDisplay(entry.effectiveHardness, compact = true)
-        }
-        HorizontalDivider()
-        AllHardnessDetails(entry.hardness, primarySource = entry.effectiveHardness?.source)
-        if (
-            compound.testPieceCureTemperatureC.isNotBlank() ||
-            compound.testPieceCureTimeMinutes.isNotBlank()
-        ) {
-            Text(
-                text = "试片硫化：${cureConditionText(compound.testPieceCureTemperatureC, compound.testPieceCureTimeMinutes)}；硬度块：${compound.blockCureTimeMinutes.ifBlank { "时间未填" }} min",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        InspectionAnswerHeader(compound = compound, entry = entry)
+        if (hasAdditionalDetails) HorizontalDivider()
+
+        if (otherHardnessValues.isNotEmpty()) {
+            DetailedSectionTitle("其他硬度")
+            SecondaryHardnessRow(
+                hardness = entry.hardness,
+                primarySource = entry.effectiveHardness?.source,
+                compact = true,
             )
         }
-        OptionalDetailRow("产品类别", entry.productCategory)
-        OptionalDetailRow("颜色", entry.color)
-        OptionalDetailRow("拉伸强度", entry.tensileStrength)
-        OptionalDetailRow("伸长率", entry.elongation)
-        OptionalDetailRow("检测标准备注", entry.notes)
-        OptionalDetailRow("胶料备注", compound.notes)
+
+        if (hasCureCondition) {
+            DetailedSectionTitle("硫化条件")
+            Text(
+                text = "试片 ${cureConditionText(compound.testPieceCureTemperatureC, compound.testPieceCureTimeMinutes)} · 硬度块 ${compound.blockCureTimeMinutes.ifBlank { "时间未填" }} min",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+
+        if (inspectionFacts.isNotEmpty()) {
+            DetailedSectionTitle("检测信息")
+            DetailedFactGrid(inspectionFacts)
+        }
+
+        if (hasNotes) {
+            DetailedSectionTitle("备注")
+            if (entry.notes.isNotBlank()) DetailedFact("检测标准", entry.notes)
+            if (compound.notes.isNotBlank()) DetailedFact("胶料", compound.notes)
+        }
+
         SearchEntryHint(entry = entry, query = searchQuery)
+    }
+}
+
+@Composable
+private fun DetailedSectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        fontWeight = FontWeight.SemiBold,
+    )
+}
+
+@Composable
+private fun DetailedFactGrid(facts: List<Pair<String, String>>) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        facts.chunked(2).forEach { rowFacts ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                rowFacts.forEach { (label, value) ->
+                    DetailedFact(
+                        label = label,
+                        value = value,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                if (rowFacts.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailedFact(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 
 @Composable
 private fun EmptyCompoundHomeCard(
     compound: RubberCompound,
-    viewMode: ManualViewMode,
     shape: androidx.compose.ui.graphics.Shape,
     onOpen: () -> Unit,
 ) {
@@ -788,11 +1085,7 @@ private fun EmptyCompoundHomeCard(
         ) {
             Text(
                 text = compound.compoundCode,
-                style = if (viewMode == ManualViewMode.COMPACT) {
-                    MaterialTheme.typography.titleMedium
-                } else {
-                    MaterialTheme.typography.titleLarge
-                },
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
             )
             if (compound.baseRubber.isNotBlank()) {
@@ -988,9 +1281,21 @@ private fun AllHardnessDetails(
 }
 
 @Composable
-private fun SearchEntryHint(entry: InspectionEntry, query: String) {
+private fun SearchEntryHint(
+    entry: InspectionEntry,
+    query: String,
+    includeHiddenHardness: Boolean = false,
+) {
     if (query.isBlank()) return
     val matches = buildList {
+        if (includeHiddenHardness) {
+            val primarySource = entry.effectiveHardness?.source
+            entry.hardness.allValues().forEach { (source, value) ->
+                if (source != primarySource && value.contains(query, ignoreCase = true)) {
+                    add("${source.label}硬度")
+                }
+            }
+        }
         if (entry.productCategory.contains(query, ignoreCase = true)) add("产品类别")
         if (entry.color.contains(query, ignoreCase = true)) add("颜色")
         if (entry.tensileStrength.contains(query, ignoreCase = true)) add("拉伸强度")
@@ -1182,31 +1487,35 @@ private fun CureConditionCard(compound: RubberCompound) {
     ) {
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("制作条件", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            if (
-                compound.testPieceCureTemperatureC.isBlank() &&
-                compound.testPieceCureTimeMinutes.isBlank()
-            ) {
-                Text("尚未填写试片硫化条件", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val hasTestPieceCondition = compound.testPieceCureTemperatureC.isNotBlank() ||
+                compound.testPieceCureTimeMinutes.isNotBlank()
+            val hasBlockCondition = compound.blockCureTimeMinutes.isNotBlank()
+            if (!hasTestPieceCondition && !hasBlockCondition) {
+                Text("尚未填写硫化条件", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                ConditionRow(
-                    label = "试片",
-                    value = cureConditionText(
-                        compound.testPieceCureTemperatureC,
-                        compound.testPieceCureTimeMinutes,
-                    ),
-                )
-                ConditionRow(
-                    label = "硬度块",
-                    value = cureConditionText(
-                        compound.testPieceCureTemperatureC,
-                        compound.blockCureTimeMinutes,
-                    ),
-                    supporting = if (compound.usesCustomBlockCureTime) {
-                        "使用自定义时间"
-                    } else {
-                        "按试片时间自动 ×2"
-                    },
-                )
+                if (hasTestPieceCondition) {
+                    ConditionRow(
+                        label = "试片",
+                        value = cureConditionText(
+                            compound.testPieceCureTemperatureC,
+                            compound.testPieceCureTimeMinutes,
+                        ),
+                    )
+                }
+                if (hasTestPieceCondition || hasBlockCondition) {
+                    ConditionRow(
+                        label = "硬度块",
+                        value = cureConditionText(
+                            compound.testPieceCureTemperatureC,
+                            compound.blockCureTimeMinutes,
+                        ),
+                        supporting = if (compound.usesCustomBlockCureTime) {
+                            "使用自定义时间"
+                        } else {
+                            "按试片时间自动 ×2"
+                        },
+                    )
+                }
             }
         }
     }

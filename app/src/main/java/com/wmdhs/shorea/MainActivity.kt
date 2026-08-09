@@ -14,9 +14,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -101,7 +103,7 @@ private fun HardnessManualHome() {
     }
     var persistRevision by remember { mutableLongStateOf(0L) }
     val snackbarHostState = remember { SnackbarHostState() }
-    val listState = rememberLazyListState()
+    val homeGridState = rememberLazyGridState()
     val coroutineScope = rememberCoroutineScope()
     var restoreFocusKey by remember { mutableStateOf<String?>(null) }
     var revealedItemKey by remember { mutableStateOf<String?>(null) }
@@ -306,14 +308,14 @@ private fun HardnessManualHome() {
         val focusKey = restoreFocusKey ?: return@LaunchedEffect
         val restoredIndex = visibleHomeItems.indexOfFirst { it.stableKey == focusKey }
         if (restoredIndex >= 0) {
-            listState.animateScrollToItem(restoredIndex)
+            homeGridState.animateScrollToItem(restoredIndex)
             delay(1_200L)
             if (restoreFocusKey == focusKey) restoreFocusKey = null
         }
     }
 
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (listState.isScrollInProgress) revealedItemKey = null
+    LaunchedEffect(homeGridState.isScrollInProgress) {
+        if (homeGridState.isScrollInProgress) revealedItemKey = null
     }
     val selectedCompound = selectedCompoundId?.let { id -> manual.findCompound(id) }
     val selectedEntries = selectedCompound?.let { compound ->
@@ -369,9 +371,13 @@ private fun HardnessManualHome() {
                 query = normalizedQuery,
                 onClearSearch = { searchQuery = "" },
             )
-            else -> LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize()
+            else -> {
+                val compactGrid = viewMode == ManualViewMode.COMPACT &&
+                    LocalDensity.current.fontScale < 1.3f
+                LazyVerticalGrid(
+                    columns = if (compactGrid) GridCells.Fixed(2) else GridCells.Fixed(1),
+                    state = homeGridState,
+                    modifier = Modifier.fillMaxSize()
                     .padding(innerPadding)
                     .pointerInput(revealedItemKey) {
                         if (revealedItemKey != null) {
@@ -384,52 +390,54 @@ private fun HardnessManualHome() {
                             }
                         }
                     },
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    top = 12.dp,
-                    end = 16.dp,
-                    bottom = 96.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(
-                    items = visibleHomeItems,
-                    key = { it.stableKey },
-                ) { item ->
-                    SwipeManualHomeItem(
-                        item = item,
-                        highlighted = restoreFocusKey == item.stableKey,
-                        revealed = revealedItemKey == item.stableKey,
-                        modifier = Modifier.animateItem(
-                            fadeInSpec = spring(),
-                            placementSpec = spring(),
-                            fadeOutSpec = spring(),
-                        ),
-                        searchQuery = normalizedQuery,
-                        viewMode = viewMode,
-                        onOpen = {
-                            when (item) {
-                                is ManualHomeItem.Inspection -> {
-                                    selectedCompoundId = item.compound.id
-                                    selectedEntryId = item.entry.id
+                    contentPadding = PaddingValues(
+                        start = if (compactGrid) 12.dp else 16.dp,
+                        top = 12.dp,
+                        end = if (compactGrid) 12.dp else 16.dp,
+                        bottom = 96.dp,
+                    ),
+                    horizontalArrangement = Arrangement.spacedBy(if (compactGrid) 10.dp else 0.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (compactGrid) 10.dp else 12.dp),
+                ) {
+                    items(
+                        items = visibleHomeItems,
+                        key = { it.stableKey },
+                    ) { item ->
+                        SwipeManualHomeItem(
+                            item = item,
+                            highlighted = restoreFocusKey == item.stableKey,
+                            revealed = revealedItemKey == item.stableKey,
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = spring(),
+                                placementSpec = spring(),
+                                fadeOutSpec = spring(),
+                            ),
+                            searchQuery = normalizedQuery,
+                            viewMode = viewMode,
+                            onOpen = {
+                                when (item) {
+                                    is ManualHomeItem.Inspection -> {
+                                        selectedCompoundId = item.compound.id
+                                        selectedEntryId = item.entry.id
+                                    }
+                                    is ManualHomeItem.EmptyCompound -> {
+                                        selectedCompoundId = item.compound.id
+                                        selectedEntryId = null
+                                    }
                                 }
-                                is ManualHomeItem.EmptyCompound -> {
-                                    selectedCompoundId = item.compound.id
-                                    selectedEntryId = null
-                                }
-                            }
-                        },
-                        onReveal = { revealedItemKey = item.stableKey },
-                        onInteractionOutsideDelete = { revealedItemKey = null },
-                        onDeleteInspection = { entry ->
-                            revealedItemKey = null
-                            deleteInspectionEntryId = entry.id; deleteInspectionVisible = true
-                        },
-                        onDeleteEmptyCompound = { compound ->
-                            revealedItemKey = null
-                            deleteCompoundId = compound.id; deleteCompoundVisible = true
-                        },
-                    )
+                            },
+                            onReveal = { revealedItemKey = item.stableKey },
+                            onInteractionOutsideDelete = { revealedItemKey = null },
+                            onDeleteInspection = { entry ->
+                                revealedItemKey = null
+                                deleteInspectionEntryId = entry.id; deleteInspectionVisible = true
+                            },
+                            onDeleteEmptyCompound = { compound ->
+                                revealedItemKey = null
+                                deleteCompoundId = compound.id; deleteCompoundVisible = true
+                            },
+                        )
+                    }
                 }
             }
         }
