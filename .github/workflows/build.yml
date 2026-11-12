@@ -1,0 +1,86 @@
+name: build
+
+# 推送到 main、每个 PR 以及手动触发时，编译 debug 和 release 两种 APK 并上传为构建产物。
+#
+# 签名：release 构建沿用 debug 签名配置（见 app/build.gradle.kts）。
+# 仓库设置了 SIGNING_KEYSTORE_BASE64 secret 时，先把它还原为 debug.keystore，
+# 产出的 APK 与手机上已安装的版本签名一致，可以直接覆盖安装；
+# 未设置时由 AGP 临时生成密钥，APK 只能用来确认能编译，无法覆盖安装。
+# 每次运行的摘要里列出两个 APK 的签名证书 SHA-256，可据此核对。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-provider: basic
+
+      - name: Restore signing key
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SIGNING_KEYSTORE_BASE64" ]; then
+            echo "::warning::未设置 SIGNING_KEYSTORE_BASE64，APK 使用临时密钥签名，无法覆盖安装手机上的版本"
+            exit 0
+          fi
+          dir="${ANDROID_USER_HOME:-$HOME/.android}"
+          mkdir -p "$dir"
+          printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$dir/debug.keystore"
+
+      - name: Build debug and release APKs
+        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleRelease
+
+      - name: Collect APKs
+        run: |
+          set -euo pipefail
+          short="${GITHUB_SHA::7}"
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/ShoreA-debug-$short.apk"
+          cp app/build/outputs/apk/release/app-release.apk "dist/ShoreA-release-$short.apk"
+
+          apksigner="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -name apksigner | sort -V | tail -n 1)"
+          {
+            echo "| APK | 大小 | 签名证书 SHA-256 |"
+            echo "|---|---|---|"
+            for apk in dist/*.apk; do
+              digest="$("$apksigner" verify --print-certs "$apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1)"
+              echo "| $(basename "$apk") | $(du -h "$apk" | cut -f1) | \`${digest:-?}\` |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ShoreA-debug
+          path: dist/ShoreA-debug-*.apk
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ShoreA-release
+          path: dist/ShoreA-release-*.apk
+          if-no-files-found: error
