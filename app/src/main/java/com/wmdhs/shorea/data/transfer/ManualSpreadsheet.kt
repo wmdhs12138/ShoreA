@@ -1,4 +1,4 @@
-package com.wmdhs.shorea
+package com.wmdhs.shorea.data.transfer
 
 import android.util.Xml
 import java.io.ByteArrayInputStream
@@ -11,6 +11,13 @@ import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import com.wmdhs.shorea.data.model.EntityIdAllocator
+import com.wmdhs.shorea.data.model.HardnessManual
+import com.wmdhs.shorea.data.model.HardnessSet
+import com.wmdhs.shorea.data.model.InspectionEntry
+import com.wmdhs.shorea.data.model.RubberCompound
+import com.wmdhs.shorea.data.model.normalizePartNumbers
+import com.wmdhs.shorea.data.model.validateManual
 import org.xmlpull.v1.XmlPullParser
 
 internal data class SpreadsheetImport(
@@ -146,8 +153,8 @@ internal fun decodeManualSpreadsheet(
     }
     require(compoundBuilders.isNotEmpty()) { "表格中没有可导入的资料" }
 
-    val compoundIds = SpreadsheetIdAllocator()
-    val entryIds = SpreadsheetIdAllocator()
+    val compoundIds = EntityIdAllocator()
+    val entryIds = EntityIdAllocator()
     val compounds = mutableListOf<RubberCompound>()
     val inspectionEntries = mutableListOf<InspectionEntry>()
     compoundBuilders.values.forEach { source ->
@@ -210,20 +217,6 @@ internal fun manualSpreadsheetFileName(now: Instant = Instant.now()): String {
         .ofPattern("yyyyMMdd-HHmmss", Locale.ROOT)
         .withZone(ZoneId.systemDefault())
     return "ShoreA-送样参考-${formatter.format(now)}.xlsx"
-}
-
-private class SpreadsheetIdAllocator {
-    private val ids = mutableSetOf<Long>()
-    private var candidate = nextEntityId(ids)
-
-    fun allocate(): Long {
-        while (!ids.add(candidate)) {
-            candidate = nextEntityId(ids)
-        }
-        val result = candidate
-        candidate = nextEntityId(ids)
-        return result
-    }
 }
 
 private fun readSharedStrings(bytes: ByteArray): List<String> {

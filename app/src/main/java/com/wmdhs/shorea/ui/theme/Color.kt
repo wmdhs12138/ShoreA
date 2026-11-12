@@ -1,16 +1,12 @@
-package com.wmdhs.shorea
+package com.wmdhs.shorea.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.Shapes
-import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 
-private val LightColors = lightColorScheme(
+// 应用自带配色：系统不支持动态取色（Android 12 以下）或用户关闭动态取色时使用。
+
+internal val ShoreLightColors = lightColorScheme(
     primary = Color(0xFF2546A8), onPrimary = Color.White,
     primaryContainer = Color(0xFFDDE1FF), onPrimaryContainer = Color(0xFF001452),
     secondary = Color(0xFF006A6A), onSecondary = Color.White,
@@ -28,7 +24,7 @@ private val LightColors = lightColorScheme(
     scrim = Color(0xFF000000), error = Color(0xFFBA1A1A), onError = Color.White,
     errorContainer = Color(0xFFFFDAD6), onErrorContainer = Color(0xFF410002),
 )
-private val DarkColors = darkColorScheme(
+internal val ShoreDarkColors = darkColorScheme(
     primary = Color(0xFFB8C3FF), onPrimary = Color(0xFF002582),
     primaryContainer = Color(0xFF17318F), onPrimaryContainer = Color(0xFFDDE1FF),
     secondary = Color(0xFF80D5D3), onSecondary = Color(0xFF003737),
@@ -46,26 +42,3 @@ private val DarkColors = darkColorScheme(
     scrim = Color(0xFF000000), error = Color(0xFFFFB4AB), onError = Color(0xFF690005),
     errorContainer = Color(0xFF93000A), onErrorContainer = Color(0xFFFFDAD6),
 )
-private val ShoreShapes = Shapes(
-    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-    small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-    medium = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-    large = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
-    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(36.dp),
-)
-private val BaseTypography = Typography()
-private val ShoreTypography = Typography(
-    headlineSmall = BaseTypography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-    titleLarge = BaseTypography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-    titleMedium = BaseTypography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-)
-
-@Composable
-internal fun ShoreATheme(content: @Composable () -> Unit) {
-    ShoreAExpressiveThemeBridge(
-        colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
-        shapes = ShoreShapes,
-        typography = ShoreTypography,
-        content = content,
-    )
-}

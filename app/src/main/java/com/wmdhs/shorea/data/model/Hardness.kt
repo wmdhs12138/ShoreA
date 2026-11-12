@@ -1,4 +1,4 @@
-package com.wmdhs.shorea
+package com.wmdhs.shorea.data.model
 
 import java.math.BigDecimal
 

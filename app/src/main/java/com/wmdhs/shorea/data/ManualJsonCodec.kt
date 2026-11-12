@@ -1,77 +1,16 @@
-package com.wmdhs.shorea
+package com.wmdhs.shorea.data
 
-import android.content.Context
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
-import java.io.IOException
-import java.util.Locale
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.map
+import com.wmdhs.shorea.data.model.HardnessManual
+import com.wmdhs.shorea.data.model.HardnessSet
+import com.wmdhs.shorea.data.model.InspectionEntry
+import com.wmdhs.shorea.data.model.RubberCompound
+import com.wmdhs.shorea.data.model.nextEntityId
+import com.wmdhs.shorea.data.model.normalizePartNumbers
+import com.wmdhs.shorea.data.model.validateManual
 import org.json.JSONArray
 import org.json.JSONObject
 
-private val Context.shoreManualDataStore by preferencesDataStore(
-    name = "shore_lists",
-)
-
-internal data class HardnessManualState(
-    val manual: HardnessManual,
-    val loadError: String? = null,
-)
-
-internal class HardnessManualStore(
-    private val context: Context,
-) {
-    val state: Flow<HardnessManualState> = context.shoreManualDataStore.data
-        .map { preferences ->
-            val manualJson = preferences[MANUAL_JSON_KEY]
-            if (manualJson.isNullOrBlank()) {
-                HardnessManualState(
-                    manual = decodeLegacyLists(
-                        preferences[LEGACY_LISTS_JSON_KEY],
-                    ),
-                )
-            } else {
-                decodeManualDataResult(manualJson).fold(
-                    onSuccess = { manual -> HardnessManualState(manual) },
-                    onFailure = { error ->
-                        HardnessManualState(
-                            manual = HardnessManual(),
-                            loadError = error.message
-                                ?: "本地手册数据无法读取",
-                        )
-                    },
-                )
-            }
-        }
-        .catch { exception ->
-            if (exception is IOException) {
-                emit(
-                    HardnessManualState(
-                        manual = HardnessManual(),
-                        loadError = "无法读取本地存储：${exception.message ?: "I/O 错误"}",
-                    ),
-                )
-            } else {
-                throw exception
-            }
-        }
-
-    suspend fun saveManual(manual: HardnessManual) {
-        validateManual(manual).getOrThrow()
-        context.shoreManualDataStore.edit { preferences ->
-            preferences[MANUAL_JSON_KEY] = encodeManualData(manual)
-        }
-    }
-
-    private companion object {
-        // 名称属于历史版本；实际 JSON schemaVersion 已升级为 2，继续复用以避免搬迁偏好项。
-        val MANUAL_JSON_KEY = stringPreferencesKey("hardness_manual_json_v1")
-        val LEGACY_LISTS_JSON_KEY = stringPreferencesKey("lists_json")
-    }
-}
+// 手册 JSON 编解码。schemaVersion 2 为当前格式；1 与更早的 lists_json 只读并自动迁移。
 
 internal fun encodeManualData(manual: HardnessManual): String {
     validateManual(manual).getOrThrow()
@@ -335,7 +274,7 @@ private fun requiredId(json: JSONObject, kind: String): Long =
         require(id >= 0L) { "$kind ID 非法：$id" }
     }
 
-private fun decodeLegacyLists(rawValue: String?): HardnessManual {
+internal fun decodeLegacyLists(rawValue: String?): HardnessManual {
     if (rawValue.isNullOrBlank()) {
         return HardnessManual()
     }

@@ -1,4 +1,14 @@
-package com.wmdhs.shorea
+package com.wmdhs.shorea.data.transfer
+
+import com.wmdhs.shorea.data.decodeManualDataResult
+import com.wmdhs.shorea.data.encodeManualData
+import com.wmdhs.shorea.data.model.EntityIdAllocator
+import com.wmdhs.shorea.data.model.HardnessManual
+import com.wmdhs.shorea.data.model.HardnessSet
+import com.wmdhs.shorea.data.model.InspectionEntry
+import com.wmdhs.shorea.data.model.RubberCompound
+import com.wmdhs.shorea.data.model.normalizePartNumbers
+import com.wmdhs.shorea.data.model.validateManual
 
 import java.time.Instant
 import java.time.ZoneId
@@ -201,20 +211,6 @@ private fun mergeEntries(
     elongation = current.elongation.ifBlank { imported.elongation },
     notes = current.notes.ifBlank { imported.notes },
 )
-
-private class EntityIdAllocator(existingIds: Iterable<Long>) {
-    private val usedIds = existingIds.toMutableSet()
-    private var nextCandidate = nextEntityId(usedIds)
-
-    fun allocate(): Long {
-        while (!usedIds.add(nextCandidate)) {
-            nextCandidate = nextEntityId(usedIds)
-        }
-        val allocated = nextCandidate
-        nextCandidate = nextEntityId(usedIds)
-        return allocated
-    }
-}
 
 internal fun manualBackupFileName(
     now: Instant = Instant.now(),

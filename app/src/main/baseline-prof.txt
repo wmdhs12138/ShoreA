@@ -1,0 +1,4 @@
+# 基线配置文件：安装后让 ART 预编译这些代码，避免首次启动、首次滚动和页面切换时走解释执行。
+# Compose / Material3 等库自带的配置文件会在 release 构建时自动合并进来，这里只补应用自身代码。
+HSPLcom/wmdhs/shorea/**;->**(**)**
+Lcom/wmdhs/shorea/**;
